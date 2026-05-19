@@ -1,28 +1,37 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileText, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Trash2, Printer } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { OfficeSupply, Department, Personnel, RequestItem } from '@/types';
+import { OfficeSupply, Department, Personnel, RequestItem, Category } from '@/types';
+import { useReactToPrint } from 'react-to-print';
 
 export default function RequestPage() {
   const [supplies, setSupplies] = useState<OfficeSupply[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [personnel, setPersonnel] = useState<Personnel[]>([]);
   
   const [selectedDeptId, setSelectedDeptId] = useState('');
   const [selectedPersonId, setSelectedPersonId] = useState('');
-  const [selectedItems, setSelectedItems] = useState<RequestItem[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
   
+  const [selectedItems, setSelectedItems] = useState<RequestItem[]>([]);
   const [currentItemId, setCurrentItemId] = useState('');
   const [currentQty, setCurrentQty] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Ref for the printable area
+  const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const catSnap = await getDocs(collection(db, 'categories'));
+        setCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
+
         const supSnap = await getDocs(collection(db, 'supplies'));
         setSupplies(supSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfficeSupply)));
         
@@ -59,6 +68,11 @@ export default function RequestPage() {
     setSelectedItems(selectedItems.filter(item => item.supplyId !== id));
   };
 
+  const handlePrint = useReactToPrint({
+    content: () => printRef.current,
+    documentTitle: `用品申請單-${new Date().toLocaleDateString('zh-TW')}`,
+  });
+
   const handleSubmit = async () => {
     if (!selectedDeptId || !selectedPersonId || selectedItems.length === 0) {
       alert('請填寫申請單位、人員，並至少選擇一項物品！');
@@ -78,9 +92,13 @@ export default function RequestPage() {
         items: selectedItems,
         createdAt: serverTimestamp(),
       });
-      alert('申請單已成功送出！✨');
+      alert('申請單已成功送出並儲存至系統！即將為您產生列印檔... ✨');
+      handlePrint();
+      
+      // Reset form
       setSelectedDeptId('');
       setSelectedPersonId('');
+      setSelectedCategoryId('');
       setSelectedItems([]);
     } catch (error: any) {
       alert('申請單送出失敗：' + error.message);
@@ -89,8 +107,8 @@ export default function RequestPage() {
     }
   };
 
-  // Filter personnel based on selected department
   const filteredPersonnel = personnel.filter(p => p.departmentId === selectedDeptId);
+  const filteredSupplies = supplies.filter(s => selectedCategoryId ? s.categoryId === selectedCategoryId : true);
 
   return (
     <main className="min-h-screen p-6 md:p-12 max-w-4xl mx-auto">
@@ -139,12 +157,21 @@ export default function RequestPage() {
           </h3>
           <div className="flex flex-col md:flex-row gap-4">
             <select 
-              value={currentItemId}
-              onChange={e => setCurrentItemId(e.target.value)}
+              value={selectedCategoryId}
+              onChange={e => { setSelectedCategoryId(e.target.value); setCurrentItemId(''); }}
               className="flex-1 rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300"
             >
-              <option value="">-- 選擇物品 --</option>
-              {supplies.map(s => (
+              <option value="">-- 先選擇類別 --</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select 
+              value={currentItemId}
+              onChange={e => setCurrentItemId(e.target.value)}
+              disabled={!selectedCategoryId}
+              className="flex-[2] rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300 disabled:opacity-50"
+            >
+              <option value="">-- 再選擇物品 --</option>
+              {filteredSupplies.map(s => (
                 <option key={s.id} value={s.id}>{s.name} (庫存: {s.quantity})</option>
               ))}
             </select>
@@ -185,11 +212,63 @@ export default function RequestPage() {
 
         <button 
           onClick={handleSubmit}
-          disabled={isSubmitting}
-          className="w-full bg-sky-500 hover:bg-sky-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-sky-200 transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100"
+          disabled={isSubmitting || selectedItems.length === 0}
+          className="w-full bg-sky-500 hover:bg-sky-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-sky-200 transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
         >
-          {isSubmitting ? '送出中...' : '產生申請單 ✨'}
+          <Printer className="w-6 h-6" />
+          {isSubmitting ? '處理中...' : '送出並產生 PDF 申請單 ✨'}
         </button>
+      </div>
+
+      {/* Hidden printable area */}
+      <div className="hidden">
+        <div ref={printRef} className="p-10 font-handwriting text-gray-800 max-w-[800px] mx-auto bg-white">
+          <h1 className="text-3xl font-bold text-center mb-8 border-b-2 border-gray-800 pb-4">辦公室用品申請單</h1>
+          
+          <div className="flex justify-between mb-8 text-lg">
+            <div>
+              <p className="mb-2"><span className="font-bold">申請單位：</span> {departments.find(d => d.id === selectedDeptId)?.name || '未選擇'}</p>
+              <p><span className="font-bold">申請人員：</span> {personnel.find(p => p.id === selectedPersonId)?.name || '未選擇'}</p>
+            </div>
+            <div>
+              <p><span className="font-bold">申請日期：</span> {new Date().toLocaleDateString('zh-TW')}</p>
+            </div>
+          </div>
+
+          <table className="w-full text-left border-collapse mb-10 text-lg">
+            <thead>
+              <tr>
+                <th className="border-b-2 border-gray-800 py-2">項次</th>
+                <th className="border-b-2 border-gray-800 py-2">物品名稱</th>
+                <th className="border-b-2 border-gray-800 py-2 text-right">數量</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedItems.map((item, index) => (
+                <tr key={item.supplyId}>
+                  <td className="border-b border-gray-300 py-3">{index + 1}</td>
+                  <td className="border-b border-gray-300 py-3">{item.name}</td>
+                  <td className="border-b border-gray-300 py-3 text-right">{item.quantity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="flex justify-between mt-20 pt-10 text-lg">
+            <div className="text-center w-48">
+              <div className="border-b border-gray-800 pb-10"></div>
+              <p className="mt-2 font-bold">申請人簽章</p>
+            </div>
+            <div className="text-center w-48">
+              <div className="border-b border-gray-800 pb-10"></div>
+              <p className="mt-2 font-bold">單位主管簽章</p>
+            </div>
+            <div className="text-center w-48">
+              <div className="border-b border-gray-800 pb-10"></div>
+              <p className="mt-2 font-bold">管理部核發</p>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );

@@ -6,6 +6,7 @@ import { ArrowLeft, Users, Building2, Plus, Edit3, Trash2 } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { Department, Personnel } from '@/types';
+import ConfirmModal from '@/components/ConfirmModal';
 
 export default function OrganizationPage() {
   const [activeTab, setActiveTab] = useState<'departments' | 'personnel'>('departments');
@@ -20,6 +21,14 @@ export default function OrganizationPage() {
   const [personId, setPersonId] = useState('');
   const [personName, setPersonName] = useState('');
   const [personDeptId, setPersonDeptId] = useState('');
+  
+  // Filter
+  const [filterDeptId, setFilterDeptId] = useState('All');
+
+  // Confirm Modal State
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
+  const [confirmMessage, setConfirmMessage] = useState('');
 
   const fetchData = async () => {
     try {
@@ -59,14 +68,17 @@ export default function OrganizationPage() {
     setDeptName(dept.name);
   };
 
-  const handleDeleteDept = async (id: string) => {
-    if (!confirm('確定要刪除這個單位嗎？')) return;
-    try {
-      await deleteDoc(doc(db, 'departments', id));
-      fetchData();
-    } catch (e: any) {
-      alert('刪除失敗：' + e.message);
-    }
+  const handleDeleteDept = (id: string) => {
+    setConfirmMessage('確定要刪除這個單位嗎？');
+    setConfirmAction(() => async () => {
+      try {
+        await deleteDoc(doc(db, 'departments', id));
+        fetchData();
+      } catch (e: any) {
+        alert('刪除失敗：' + e.message);
+      }
+    });
+    setConfirmOpen(true);
   };
 
   // Personnel Handlers
@@ -93,18 +105,33 @@ export default function OrganizationPage() {
     setPersonDeptId(person.departmentId);
   };
 
-  const handleDeletePerson = async (id: string) => {
-    if (!confirm('確定要刪除這位人員嗎？')) return;
-    try {
-      await deleteDoc(doc(db, 'personnel', id));
-      fetchData();
-    } catch (e: any) {
-      alert('刪除失敗：' + e.message);
-    }
+  const handleDeletePerson = (id: string) => {
+    setConfirmMessage('確定要刪除這位人員嗎？');
+    setConfirmAction(() => async () => {
+      try {
+        await deleteDoc(doc(db, 'personnel', id));
+        fetchData();
+      } catch (e: any) {
+        alert('刪除失敗：' + e.message);
+      }
+    });
+    setConfirmOpen(true);
   };
+
+  const filteredPersonnel = filterDeptId === 'All' 
+    ? personnel 
+    : personnel.filter(p => p.departmentId === filterDeptId);
 
   return (
     <main className="min-h-screen p-6 md:p-12 max-w-5xl mx-auto">
+      <ConfirmModal 
+        isOpen={confirmOpen}
+        title="確認刪除"
+        message={confirmMessage}
+        onConfirm={confirmAction}
+        onCancel={() => setConfirmOpen(false)}
+      />
+
       <Link href="/" className="inline-flex items-center gap-2 text-sky-500 hover:text-sky-600 mb-6 font-medium bg-white px-4 py-2 rounded-full shadow-sm border border-sky-100 transition-transform hover:-translate-x-1">
         <ArrowLeft className="w-4 h-4" /> 回首頁
       </Link>
@@ -192,11 +219,23 @@ export default function OrganizationPage() {
               </div>
             </div>
 
+            <div className="mb-4 flex items-center gap-2 border-t-2 border-dashed border-sky-100 pt-6">
+              <span className="font-bold text-gray-600">依單位篩選：</span>
+              <select 
+                value={filterDeptId}
+                onChange={e => setFilterDeptId(e.target.value)}
+                className="rounded-xl border-2 border-sky-100 px-4 py-1 focus:outline-none focus:border-sky-300"
+              >
+                <option value="All">全部單位</option>
+                {departments.map(dept => <option key={dept.id} value={dept.id}>{dept.name}</option>)}
+              </select>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {personnel.map(person => {
+              {filteredPersonnel.map(person => {
                 const dept = departments.find(d => d.id === person.departmentId);
                 return (
-                  <div key={person.id} className="bg-white border-2 border-sky-100 rounded-2xl p-4 flex justify-between items-center group shadow-sm">
+                  <div key={person.id} className="bg-white border-2 border-sky-100 rounded-2xl p-4 flex justify-between items-center group shadow-sm hover:shadow-md transition-shadow">
                     <div>
                       <div className="font-bold text-gray-800">{person.name}</div>
                       <div className="text-xs text-sky-500 font-medium bg-sky-50 px-2 py-0.5 rounded-full inline-block mt-1">
@@ -211,7 +250,7 @@ export default function OrganizationPage() {
                 );
               })}
             </div>
-            {personnel.length === 0 && <p className="text-gray-400 text-center py-8">目前還沒有人員資料喔</p>}
+            {filteredPersonnel.length === 0 && <p className="text-gray-400 text-center py-8">目前還沒有符合條件的人員資料喔</p>}
           </div>
         )}
       </div>

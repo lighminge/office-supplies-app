@@ -18,7 +18,8 @@
     "@hookform/resolvers": "^3.4.2",
     "lucide-react": "^0.378.0",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^2.3.0"
+    "tailwind-merge": "^2.3.0",
+    "react-to-print": "^2.15.1"
   },
   "devDependencies": {
     "typescript": "^5",
