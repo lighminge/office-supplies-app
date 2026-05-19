@@ -13,15 +13,15 @@ export default function ItemCard({ item, onEdit, onDelete }: ItemCardProps) {
   const isLowStock = item.quantity <= item.minQuantity;
 
   return (
-    <div className={`relative p-5 rounded-3xl border-2 transition-all hover:-translate-y-1 hover:shadow-md ${isLowStock ? 'bg-red-50 border-red-200' : 'bg-white border-pink-100'}`}>
+    <div className={`relative p-5 rounded-3xl border-2 transition-all hover:-translate-y-1 hover:shadow-md ${isLowStock ? 'bg-red-50 border-red-200' : 'bg-white border-sky-100'}`}>
       {isLowStock && (
         <span className="absolute -top-3 -right-3 bg-red-400 text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm animate-bounce">
-          快用完了! 😱
+          快用完�?! ?��
         </span>
       )}
       
       <div className="flex items-start gap-4">
-        <div className={`p-4 rounded-2xl ${isLowStock ? 'bg-red-100 text-red-500' : 'bg-pink-100 text-pink-500'}`}>
+        <div className={`p-4 rounded-2xl ${isLowStock ? 'bg-red-100 text-red-500' : 'bg-sky-100 text-sky-500'}`}>
           <IconComponent className="w-8 h-8" />
         </div>
         
@@ -33,7 +33,7 @@ export default function ItemCard({ item, onEdit, onDelete }: ItemCardProps) {
           
           <div className="flex items-center gap-4 text-sm mt-2">
             <div className="flex items-center gap-1">
-              <span className="text-gray-500">數量:</span>
+              <span className="text-gray-500">?��?:</span>
               <span className={`font-bold text-lg ${isLowStock ? 'text-red-500' : 'text-gray-700'}`}>
                 {item.quantity}
               </span>
@@ -56,7 +56,7 @@ export default function ItemCard({ item, onEdit, onDelete }: ItemCardProps) {
           onClick={() => onDelete(item.id)}
           className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-gray-50 text-gray-500 font-medium hover:bg-red-50 hover:text-red-500 transition-colors"
         >
-          <Icons.Trash2 className="w-4 h-4" /> 刪除
+          <Icons.Trash2 className="w-4 h-4" /> ?�除
         </button>
       </div>
     </div>
