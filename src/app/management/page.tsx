@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { OfficeSupply } from '@/types';
 import ItemCard from '@/components/ItemCard';
+import ItemForm from '@/components/ItemForm';
 import Link from 'next/link';
 import { ArrowLeft, PlusCircle, Search, Sparkles } from 'lucide-react';
 import { db } from '@/lib/firebase';
@@ -30,9 +31,9 @@ export default function ManagementPage() {
       // Fallback for demo when Firebase is not configured
       if (supplies.length === 0) {
           setSupplies([
-            { id: '1', name: '?��?貓咪便利�?, category: '?�具', quantity: 15, minQuantity: 5, iconName: 'Sticker' },
-            { id: '2', name: '?�空漸層?��?�?, category: '?�具', quantity: 2, minQuantity: 10, iconName: 'PenTool' },
-            { id: '3', name: '大容?�馬?�杯', category: '?�水??, quantity: 5, minQuantity: 2, iconName: 'Coffee' },
+            { id: '1', name: '可愛貓咪便利貼', category: '文具', quantity: 15, minQuantity: 5, iconName: 'Sticker' },
+            { id: '2', name: '星空漸層原子筆', category: '文具', quantity: 2, minQuantity: 10, iconName: 'PenTool' },
+            { id: '3', name: '大容量馬克杯', category: '茶水間', quantity: 5, minQuantity: 2, iconName: 'Coffee' },
           ]);
       }
     } finally {
@@ -64,13 +65,13 @@ export default function ManagementPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確�?要刪?�這個可?��??��??��? ?��')) return;
+    if (!confirm('確定要刪除這個可愛的物品嗎？ 🥺')) return;
     try {
       await deleteDoc(doc(db, 'supplies', id));
       fetchSupplies();
     } catch (error) {
       console.error('Error deleting item', error);
-      alert('?�除失�?');
+      alert('刪除失敗');
     }
   };
 
@@ -92,16 +93,16 @@ export default function ManagementPage() {
         <div>
           <h1 className="text-4xl font-extrabold text-sky-500 flex items-center gap-3">
             <Sparkles className="text-yellow-400 w-8 h-8 animate-pulse" />
-            辦公室用?�管?��?幫�?
+            辦公室用具管理小幫手
           </h1>
-          <p className="text-gray-500 mt-2 ml-1">輕�?管�??�?��?辦公室�?????</p>
+          <p className="text-gray-500 mt-2 ml-1">輕鬆管理所有的辦公室小物 🎀</p>
         </div>
         <button 
           onClick={() => { setEditingItem(null); setIsFormOpen(true); }}
           className="bg-sky-400 hover:bg-sky-500 text-white px-6 py-3 rounded-full font-bold shadow-lg shadow-sky-200 transition-transform hover:scale-105 flex items-center gap-2"
         >
           <PlusCircle className="w-5 h-5" />
-          ?��??��?
+          新增物品
         </button>
       </header>
 
@@ -122,7 +123,7 @@ export default function ManagementPage() {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input 
             type="text"
-            placeholder="?��??��??��???.."
+            placeholder="搜尋可愛的小物..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-12 pr-4 py-3 rounded-2xl border-2 border-sky-100 focus:outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
@@ -135,7 +136,7 @@ export default function ManagementPage() {
               onClick={() => setSelectedCategory(cat)}
               className={`px-4 py-2 rounded-xl font-medium whitespace-nowrap transition-colors ${selectedCategory === cat ? 'bg-sky-400 text-white' : 'bg-sky-50 text-sky-500 hover:bg-sky-100'}`}
             >
-              {cat === 'All' ? '?�部' : cat}
+              {cat === 'All' ? '全部' : cat}
             </button>
           ))}
         </div>
@@ -143,12 +144,12 @@ export default function ManagementPage() {
 
       {loading ? (
         <div className="flex justify-center items-center py-20 text-sky-400 font-bold">
-          <Sparkles className="animate-spin w-8 h-8 mr-2" /> 載入�?..
+          <Sparkles className="animate-spin w-8 h-8 mr-2" /> 載入中...
         </div>
       ) : filteredSupplies.length === 0 ? (
         <div className="text-center py-20 bg-white/50 rounded-3xl border-2 border-dashed border-sky-200">
-          <div className="text-6xl mb-4">?��</div>
-          <p className="text-xl text-gray-500 font-medium">?��??�符?��??��???/p>
+          <div className="text-6xl mb-4">📭</div>
+          <p className="text-xl text-gray-500 font-medium">找不到符合的物品耶</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
