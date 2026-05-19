@@ -5,78 +5,92 @@ import Link from 'next/link';
 import { ArrowLeft, FileText, Plus, Trash2 } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { OfficeSupply } from '@/types';
+import { OfficeSupply, Department, Personnel, RequestItem } from '@/types';
 
 export default function RequestPage() {
   const [supplies, setSupplies] = useState<OfficeSupply[]>([]);
-  const [department, setDepartment] = useState('');
-  const [applicant, setApplicant] = useState('');
-  const [selectedItems, setSelectedItems] = useState<{id: string, name: string, quantity: number}[]>([]);
-  const [currentItem, setCurrentItem] = useState('');
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [personnel, setPersonnel] = useState<Personnel[]>([]);
+  
+  const [selectedDeptId, setSelectedDeptId] = useState('');
+  const [selectedPersonId, setSelectedPersonId] = useState('');
+  const [selectedItems, setSelectedItems] = useState<RequestItem[]>([]);
+  
+  const [currentItemId, setCurrentItemId] = useState('');
   const [currentQty, setCurrentQty] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const fetchSupplies = async () => {
+    const fetchData = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'supplies'));
-        const data = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as OfficeSupply[];
-        setSupplies(data);
+        const supSnap = await getDocs(collection(db, 'supplies'));
+        setSupplies(supSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfficeSupply)));
+        
+        const deptSnap = await getDocs(collection(db, 'departments'));
+        setDepartments(deptSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Department)));
+        
+        const perSnap = await getDocs(collection(db, 'personnel'));
+        setPersonnel(perSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Personnel)));
       } catch (error) {
-        console.error('Failed to fetch supplies', error);
+        console.error('Failed to fetch data', error);
       }
     };
-    fetchSupplies();
+    fetchData();
   }, []);
 
   const handleAddItem = () => {
-    if (!currentItem || currentQty <= 0) return;
-    const supply = supplies.find(s => s.id === currentItem);
+    if (!currentItemId || currentQty <= 0) return;
+    const supply = supplies.find(s => s.id === currentItemId);
     if (!supply) return;
     
-    // Check if already in list
-    const existing = selectedItems.find(item => item.id === currentItem);
+    const existing = selectedItems.find(item => item.supplyId === currentItemId);
     if (existing) {
       setSelectedItems(selectedItems.map(item => 
-        item.id === currentItem ? { ...item, quantity: item.quantity + currentQty } : item
+        item.supplyId === currentItemId ? { ...item, quantity: item.quantity + currentQty } : item
       ));
     } else {
-      setSelectedItems([...selectedItems, { id: supply.id, name: supply.name, quantity: currentQty }]);
+      setSelectedItems([...selectedItems, { supplyId: supply.id, name: supply.name, quantity: currentQty }]);
     }
-    setCurrentItem('');
+    setCurrentItemId('');
     setCurrentQty(1);
   };
 
   const handleRemoveItem = (id: string) => {
-    setSelectedItems(selectedItems.filter(item => item.id !== id));
+    setSelectedItems(selectedItems.filter(item => item.supplyId !== id));
   };
 
   const handleSubmit = async () => {
-    if (!department || !applicant || selectedItems.length === 0) {
+    if (!selectedDeptId || !selectedPersonId || selectedItems.length === 0) {
       alert('請填寫申請單位、人員，並至少選擇一項物品！');
       return;
     }
+    
+    const dept = departments.find(d => d.id === selectedDeptId);
+    const person = personnel.find(p => p.id === selectedPersonId);
+    
     setIsSubmitting(true);
     try {
       await addDoc(collection(db, 'requests'), {
-        department,
-        applicant,
+        departmentId: selectedDeptId,
+        departmentName: dept?.name || '未知單位',
+        applicantId: selectedPersonId,
+        applicantName: person?.name || '未知人員',
         items: selectedItems,
         createdAt: serverTimestamp(),
       });
       alert('申請單已成功送出！✨');
-      setDepartment('');
-      setApplicant('');
+      setSelectedDeptId('');
+      setSelectedPersonId('');
       setSelectedItems([]);
     } catch (error: any) {
-      alert('申請單送出失敗：' + error.message + '\n\n(提示：請確認 Firebase 的 Firestore 規則是否已設定為允許讀寫)');
+      alert('申請單送出失敗：' + error.message);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  // Filter personnel based on selected department
+  const filteredPersonnel = personnel.filter(p => p.departmentId === selectedDeptId);
 
   return (
     <main className="min-h-screen p-6 md:p-12 max-w-4xl mx-auto">
@@ -96,23 +110,26 @@ export default function RequestPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">申請單位</label>
-            <input 
-              type="text" 
-              value={department}
-              onChange={e => setDepartment(e.target.value)}
+            <select 
+              value={selectedDeptId}
+              onChange={e => { setSelectedDeptId(e.target.value); setSelectedPersonId(''); }}
               className="w-full rounded-2xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
-              placeholder="例如：資訊部"
-            />
+            >
+              <option value="">-- 選擇單位 --</option>
+              {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">申請人員</label>
-            <input 
-              type="text" 
-              value={applicant}
-              onChange={e => setApplicant(e.target.value)}
-              className="w-full rounded-2xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
-              placeholder="例如：王小明"
-            />
+            <select 
+              value={selectedPersonId}
+              onChange={e => setSelectedPersonId(e.target.value)}
+              disabled={!selectedDeptId}
+              className="w-full rounded-2xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200 disabled:opacity-50"
+            >
+              <option value="">-- 選擇人員 --</option>
+              {filteredPersonnel.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
           </div>
         </div>
 
@@ -122,8 +139,8 @@ export default function RequestPage() {
           </h3>
           <div className="flex flex-col md:flex-row gap-4">
             <select 
-              value={currentItem}
-              onChange={e => setCurrentItem(e.target.value)}
+              value={currentItemId}
+              onChange={e => setCurrentItemId(e.target.value)}
               className="flex-1 rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300"
             >
               <option value="">-- 選擇物品 --</option>
@@ -152,11 +169,11 @@ export default function RequestPage() {
             <h3 className="font-bold text-gray-700 mb-4">已選取清單</h3>
             <ul className="space-y-3">
               {selectedItems.map(item => (
-                <li key={item.id} className="flex justify-between items-center bg-white border border-sky-100 rounded-xl p-4 shadow-sm">
+                <li key={item.supplyId} className="flex justify-between items-center bg-white border border-sky-100 rounded-xl p-4 shadow-sm">
                   <span className="font-medium text-gray-800">{item.name}</span>
                   <div className="flex items-center gap-4">
                     <span className="text-sky-600 font-bold">x {item.quantity}</span>
-                    <button onClick={() => handleRemoveItem(item.id)} className="text-gray-400 hover:text-red-500 p-1">
+                    <button onClick={() => handleRemoveItem(item.supplyId)} className="text-gray-400 hover:text-red-500 p-1">
                       <Trash2 className="w-5 h-5" />
                     </button>
                   </div>

@@ -1,15 +1,20 @@
 import React from 'react';
-import { OfficeSupply } from '@/types';
+import { OfficeSupply, Category, AppIcon } from '@/types';
 import * as Icons from 'lucide-react';
 
 interface ItemCardProps {
   item: OfficeSupply;
+  categories: Category[];
+  icons: AppIcon[];
   onEdit: (item: OfficeSupply) => void;
   onDelete: (id: string) => void;
 }
 
-export default function ItemCard({ item, onEdit, onDelete }: ItemCardProps) {
-  const IconComponent = (Icons as any)[item.iconName] || Icons.HelpCircle;
+export default function ItemCard({ item, categories, icons, onEdit, onDelete }: ItemCardProps) {
+  const category = categories.find(c => c.id === item.categoryId);
+  const iconData = icons.find(i => i.id === item.iconId);
+  const IconComponent = iconData ? (Icons as any)[iconData.name] || Icons.HelpCircle : Icons.HelpCircle;
+  
   const isLowStock = item.quantity <= item.minQuantity;
 
   return (
@@ -28,7 +33,7 @@ export default function ItemCard({ item, onEdit, onDelete }: ItemCardProps) {
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-bold text-gray-800 truncate">{item.name}</h3>
           <span className="inline-block px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-lg mt-1 mb-2">
-            {item.category}
+            {category ? category.name : '未知類別'}
           </span>
           
           <div className="flex items-center gap-4 text-sm mt-2">
@@ -46,16 +51,10 @@ export default function ItemCard({ item, onEdit, onDelete }: ItemCardProps) {
       </div>
 
       <div className="flex gap-2 mt-4 pt-4 border-t-2 border-dashed border-gray-100">
-        <button 
-          onClick={() => onEdit(item)}
-          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-blue-50 text-blue-500 font-medium hover:bg-blue-100 transition-colors"
-        >
+        <button onClick={() => onEdit(item)} className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-blue-50 text-blue-500 font-medium hover:bg-blue-100 transition-colors">
           <Icons.Edit3 className="w-4 h-4" /> 編輯
         </button>
-        <button 
-          onClick={() => onDelete(item.id)}
-          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-gray-50 text-gray-500 font-medium hover:bg-red-50 hover:text-red-500 transition-colors"
-        >
+        <button onClick={() => onDelete(item.id)} className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-gray-50 text-gray-500 font-medium hover:bg-red-50 hover:text-red-500 transition-colors">
           <Icons.Trash2 className="w-4 h-4" /> 刪除
         </button>
       </div>

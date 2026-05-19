@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ClipboardList, Package, BarChart3, Sparkles } from 'lucide-react';
+import { ClipboardList, Package, BarChart3, Users, Sparkles } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -12,7 +12,7 @@ export default function Home() {
         <p className="text-lg text-gray-500">請選擇您需要的功能 💙</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl">
         <Link href="/request" className="group block p-8 bg-white/80 backdrop-blur-sm rounded-3xl border-2 border-sky-100 hover:border-sky-300 hover:shadow-xl hover:shadow-sky-100 transition-all hover:-translate-y-2 text-center">
           <div className="w-20 h-20 mx-auto bg-sky-100 text-sky-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-sm">
             <ClipboardList className="w-10 h-10" />
@@ -26,7 +26,15 @@ export default function Home() {
             <Package className="w-10 h-10" />
           </div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">用品管理</h2>
-          <p className="text-gray-500">新增、修改、刪除辦公室用品資料</p>
+          <p className="text-gray-500">管理辦公室用品、類別及可愛插圖</p>
+        </Link>
+
+        <Link href="/organization" className="group block p-8 bg-white/80 backdrop-blur-sm rounded-3xl border-2 border-sky-100 hover:border-sky-300 hover:shadow-xl hover:shadow-sky-100 transition-all hover:-translate-y-2 text-center">
+          <div className="w-20 h-20 mx-auto bg-sky-100 text-sky-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-sm">
+            <Users className="w-10 h-10" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">單位及人員資料</h2>
+          <p className="text-gray-500">管理公司各部門單位與員工資料</p>
         </Link>
 
         <Link href="/report" className="group block p-8 bg-white/80 backdrop-blur-sm rounded-3xl border-2 border-sky-100 hover:border-sky-300 hover:shadow-xl hover:shadow-sky-100 transition-all hover:-translate-y-2 text-center">
@@ -34,7 +42,7 @@ export default function Home() {
             <BarChart3 className="w-10 h-10" />
           </div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">統計報表</h2>
-          <p className="text-gray-500">依據日期區間與類別，產生統計資料</p>
+          <p className="text-gray-500">依據日期區間與類別，查詢申請統計</p>
         </Link>
       </div>
     </main>

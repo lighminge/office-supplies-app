@@ -1,8 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "辦公室小物管理系統",
@@ -16,7 +13,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-TW">
-      <body className={`${inter.className} bg-sky-50/50 text-gray-800`}>{children}</body>
+      <body className={`bg-sky-50/50 text-gray-800 font-handwriting`}>{children}</body>
     </html>
   );
 }

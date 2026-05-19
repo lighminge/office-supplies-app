@@ -4,35 +4,37 @@ import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { OfficeSupply, CATEGORIES, AVAILABLE_ICONS } from '@/types';
+import { OfficeSupply, Category, AppIcon } from '@/types';
 import * as Icons from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const schema = z.object({
   name: z.string().min(1, '請輸入物品名稱').max(50, '名稱太長了啦 >_<'),
-  category: z.string().min(1, '請選擇分類'),
+  categoryId: z.string().min(1, '請選擇分類'),
   quantity: z.number({ invalid_type_error: '數量必須是數字唷' }).min(0, '數量不能是負數啦'),
   minQuantity: z.number({ invalid_type_error: '安全庫存必須是數字' }).min(0, '不能是負數'),
-  iconName: z.string().min(1, '請選一個可愛的圖示'),
+  iconId: z.string().min(1, '請選一個可愛的圖示'),
 });
 
 type FormData = z.infer<typeof schema>;
 
 interface ItemFormProps {
   initialData?: OfficeSupply | null;
+  categories: Category[];
+  icons: AppIcon[];
   onSubmit: (data: FormData) => void;
   onCancel: () => void;
 }
 
-export default function ItemForm({ initialData, onSubmit, onCancel }: ItemFormProps) {
-  const { register, handleSubmit, formState: { errors }, setValue, watch, reset } = useForm<FormData>({
+export default function ItemForm({ initialData, categories, icons, onSubmit, onCancel }: ItemFormProps) {
+  const { register, handleSubmit, formState: { errors }, watch, reset } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       name: '',
-      category: CATEGORIES[0],
+      categoryId: categories.length > 0 ? categories[0].id : '',
       quantity: 0,
       minQuantity: 0,
-      iconName: AVAILABLE_ICONS[0],
+      iconId: icons.length > 0 ? icons[0].id : '',
     }
   });
 
@@ -40,23 +42,24 @@ export default function ItemForm({ initialData, onSubmit, onCancel }: ItemFormPr
     if (initialData) {
       reset({
         name: initialData.name,
-        category: initialData.category,
+        categoryId: initialData.categoryId,
         quantity: initialData.quantity,
         minQuantity: initialData.minQuantity,
-        iconName: initialData.iconName,
+        iconId: initialData.iconId,
       });
     } else {
       reset({
         name: '',
-        category: CATEGORIES[0],
+        categoryId: categories.length > 0 ? categories[0].id : '',
         quantity: 0,
         minQuantity: 0,
-        iconName: AVAILABLE_ICONS[0],
+        iconId: icons.length > 0 ? icons[0].id : '',
       });
     }
-  }, [initialData, reset]);
+  }, [initialData, reset, categories, icons]);
 
-  const selectedIcon = watch('iconName');
+  const selectedIconId = watch('iconId');
+  const selectedIconData = icons.find(i => i.id === selectedIconId);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 bg-white p-6 rounded-3xl shadow-sm border-2 border-sky-100">
@@ -79,25 +82,25 @@ export default function ItemForm({ initialData, onSubmit, onCancel }: ItemFormPr
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">分類</label>
           <select 
-            {...register('category')} 
+            {...register('categoryId')} 
             className="w-full rounded-2xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200 bg-white"
           >
-            {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+            {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
           </select>
-          {errors.category && <p className="text-red-400 text-xs mt-1 ml-2">{errors.category.message}</p>}
+          {errors.categoryId && <p className="text-red-400 text-xs mt-1 ml-2">{errors.categoryId.message}</p>}
         </div>
 
         <div>
            <label className="block text-sm font-medium text-gray-700 mb-1">插圖</label>
            <div className="flex items-center gap-2">
              <div className="p-2 bg-sky-50 rounded-xl">
-               {selectedIcon && React.createElement((Icons as any)[selectedIcon] || Icons.HelpCircle, { className: 'w-6 h-6 text-sky-500' })}
+               {selectedIconData && React.createElement((Icons as any)[selectedIconData.name] || Icons.HelpCircle, { className: 'w-6 h-6 text-sky-500' })}
              </div>
              <select 
-              {...register('iconName')} 
+              {...register('iconId')} 
               className="flex-1 rounded-2xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300 bg-white"
              >
-               {AVAILABLE_ICONS.map(icon => <option key={icon} value={icon}>{icon}</option>)}
+               {icons.map(icon => <option key={icon.id} value={icon.id}>{icon.label}</option>)}
              </select>
            </div>
         </div>
@@ -115,7 +118,7 @@ export default function ItemForm({ initialData, onSubmit, onCancel }: ItemFormPr
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">安全庫存 (低於此數會提醒)</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">安全庫存</label>
           <input 
             type="number" 
             {...register('minQuantity', { valueAsNumber: true })} 
@@ -126,19 +129,8 @@ export default function ItemForm({ initialData, onSubmit, onCancel }: ItemFormPr
       </div>
 
       <div className="flex gap-3 pt-4">
-        <button 
-          type="button" 
-          onClick={onCancel}
-          className="flex-1 px-4 py-2 rounded-2xl border-2 border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors"
-        >
-          取消
-        </button>
-        <button 
-          type="submit" 
-          className="flex-1 px-4 py-2 rounded-2xl bg-sky-400 text-white font-medium hover:bg-sky-500 transition-colors shadow-sm shadow-sky-200"
-        >
-          {initialData ? '儲存修改 💙' : '新增物品 ✨'}
-        </button>
+        <button type="button" onClick={onCancel} className="flex-1 px-4 py-2 rounded-2xl border-2 border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors">取消</button>
+        <button type="submit" className="flex-1 px-4 py-2 rounded-2xl bg-sky-400 text-white font-medium hover:bg-sky-500 transition-colors shadow-sm shadow-sky-200">{initialData ? '儲存修改 💙' : '新增物品 ✨'}</button>
       </div>
     </form>
   );

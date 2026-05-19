@@ -5,45 +5,35 @@ import Link from 'next/link';
 import { ArrowLeft, BarChart3, Search } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
-import { CATEGORIES } from '@/types';
-
-interface RequestItem {
-  id: string;
-  name: string;
-  quantity: number;
-}
-
-interface RequestRecord {
-  id: string;
-  department: string;
-  applicant: string;
-  items: RequestItem[];
-  createdAt: any;
-}
+import { Category, RequestRecord } from '@/types';
 
 export default function ReportPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('All');
+  
   const [records, setRecords] = useState<RequestRecord[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [suppliesCatMap, setSuppliesCatMap] = useState<Record<string, string>>({}); // supplyId -> categoryId
   const [loading, setLoading] = useState(false);
-  const [suppliesMap, setSuppliesMap] = useState<Record<string, string>>({}); // id -> category
 
   useEffect(() => {
-    // Fetch supplies to know their categories
-    const fetchSupplies = async () => {
+    const fetchData = async () => {
       try {
-        const snap = await getDocs(collection(db, 'supplies'));
+        const catSnap = await getDocs(collection(db, 'categories'));
+        setCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
+
+        const supSnap = await getDocs(collection(db, 'supplies'));
         const map: Record<string, string> = {};
-        snap.forEach(doc => {
-          map[doc.id] = doc.data().category;
+        supSnap.forEach(doc => {
+          map[doc.id] = doc.data().categoryId;
         });
-        setSuppliesMap(map);
+        setSuppliesCatMap(map);
       } catch (error) {
-        console.error("Error fetching supplies map", error);
+        console.error("Error fetching dependencies", error);
       }
     };
-    fetchSupplies();
+    fetchData();
   }, []);
 
   const generateReport = async () => {
@@ -73,17 +63,16 @@ export default function ReportPage() {
       
       setRecords(data);
     } catch (error: any) {
-      alert('產生報表失敗：' + error.message + '\n\n(提示：這可能是因為 Firestore 的索引需要建立，或是規則未開放)');
+      alert('產生報表失敗：' + error.message + '\n\n(提示：這可能是因為 Firestore 的索引需要建立，如果您在 Console 中看到錯誤，請點擊裡面的連結來建立複合索引！)');
     } finally {
       setLoading(false);
     }
   };
 
-  // Process data for display
+  // Filter records based on selected category
   const filteredRecords = records.filter(record => {
-    if (selectedCategory === 'All') return true;
-    // Keep record if it contains ANY item from the selected category
-    return record.items.some(item => suppliesMap[item.id] === selectedCategory);
+    if (selectedCategoryId === 'All') return true;
+    return record.items.some(item => suppliesCatMap[item.supplyId] === selectedCategoryId);
   });
 
   return (
@@ -123,12 +112,12 @@ export default function ReportPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">物品類別</label>
             <select 
-              value={selectedCategory}
-              onChange={e => setSelectedCategory(e.target.value)}
+              value={selectedCategoryId}
+              onChange={e => setSelectedCategoryId(e.target.value)}
               className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300"
             >
               <option value="All">全部類別</option>
-              {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+              {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
             </select>
           </div>
           <button 
@@ -163,13 +152,13 @@ export default function ReportPage() {
                     <td className="py-4 pl-2 text-gray-600">
                       {record.createdAt?.toDate ? record.createdAt.toDate().toLocaleDateString('zh-TW') : 'N/A'}
                     </td>
-                    <td className="py-4 text-gray-800 font-medium">{record.department}</td>
-                    <td className="py-4 text-gray-800">{record.applicant}</td>
+                    <td className="py-4 text-gray-800 font-medium">{record.departmentName}</td>
+                    <td className="py-4 text-gray-800">{record.applicantName}</td>
                     <td className="py-4">
                       <ul className="space-y-1">
                         {record.items.map((item, idx) => {
-                          const cat = suppliesMap[item.id];
-                          if (selectedCategory !== 'All' && cat !== selectedCategory) return null;
+                          const catId = suppliesCatMap[item.supplyId];
+                          if (selectedCategoryId !== 'All' && catId !== selectedCategoryId) return null;
                           return (
                             <li key={idx} className="text-sm">
                               <span className="text-gray-700">{item.name}</span>
