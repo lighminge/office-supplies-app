@@ -25,6 +25,7 @@ export default function ManagementPage() {
 
   // Filters
   const [supplyCategoryFilter, setSupplyCategoryFilter] = useState('');
+  const [iconCategoryFilter, setIconCategoryFilter] = useState('');
 
   // Modals
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -99,6 +100,8 @@ export default function ManagementPage() {
     await deleteDoc(doc(db, 'icons', id)); fetchData();
   });
 
+  const filteredIcons = iconCategoryFilter ? icons.filter(i => i.categoryId === iconCategoryFilter) : icons;
+
   // --- Supply ---
   const [isSupplyFormOpen, setIsSupplyFormOpen] = useState(false);
   const [editingSupply, setEditingSupply] = useState<OfficeSupply | null>(null);
@@ -161,17 +164,6 @@ export default function ManagementPage() {
     setProcPrice(0);
   };
 
-  const handleEditProcItem = (item: ProcurementItem) => {
-    const supply = supplies.find(s => s.id === item.supplyId);
-    if (supply) {
-      setProcCatId(supply.categoryId);
-      setProcSupplyId(item.supplyId);
-      setProcQty(item.quantity);
-      setProcPrice(item.unitPrice);
-      setProcItems(procItems.filter(i => i.supplyId !== item.supplyId));
-    }
-  };
-
   const handleRemoveProcItem = (id: string) => requestDelete('確定要從採購清單中移除這個品項嗎？', async () => {
     setProcItems(procItems.filter(i => i.supplyId !== id));
   });
@@ -188,8 +180,6 @@ export default function ManagementPage() {
         isRestocked: false,
         createdAt: serverTimestamp()
       });
-      // Optionally update purchasing requests to completed/ordered if needed. 
-      // For now we just create the Procurement.
       alert('採購單建立成功！');
       setProcDate(''); setProcLocation(''); setProcItems([]); fetchData();
     } catch (e: any) { alert('儲存失敗：' + e.message); }
@@ -307,8 +297,20 @@ export default function ManagementPage() {
               </div>
             </div>
             
+            <div className="mb-6 flex items-center gap-2 border-t-2 border-b-2 border-dashed border-sky-100 py-6">
+              <span className="font-bold text-gray-600">依類別篩選：</span>
+              <select 
+                value={iconCategoryFilter}
+                onChange={e => setIconCategoryFilter(e.target.value)}
+                className="rounded-xl border-2 border-sky-100 px-4 py-1 focus:outline-none focus:border-sky-300"
+              >
+                <option value="">全部類別</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {icons.map(icon => {
+              {filteredIcons.map(icon => {
                 const IconComponent = (Icons as any)[icon.name] || Icons.HelpCircle;
                 const catName = categories.find(c => c.id === icon.categoryId)?.name || '未知';
                 return (
@@ -322,6 +324,7 @@ export default function ManagementPage() {
                   </div>
                 </div>
               )})}
+              {filteredIcons.length === 0 && <p className="col-span-full text-center text-gray-400 py-10">目前該類別沒有設定任何插圖喔</p>}
             </div>
           </div>
         )}
@@ -366,14 +369,45 @@ export default function ManagementPage() {
         {/* Procurement Tab */}
         {activeTab === 'procurement' && (
           <div>
-            {purchasingRequests.length > 0 && (
-              <div className="mb-8 p-4 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-2xl">
-                <p className="font-bold flex items-center gap-2">
-                  <Sparkles className="w-5 h-5"/>
-                  核可資料中，有已轉採購單的品項！系統已自動幫您匯入下方的採購清單。
-                </p>
-              </div>
-            )}
+            <div className="mb-8">
+              <h2 className="text-xl font-bold text-gray-800 mb-4 border-b-2 border-gray-100 pb-2">已轉採購單的申請資料 (清單)</h2>
+              {purchasingRequests.length === 0 ? (
+                <p className="text-gray-400 bg-gray-50 rounded-xl p-4 text-center">目前沒有等待採買的核可申請單喔</p>
+              ) : (
+                <div className="overflow-x-auto bg-white rounded-2xl border border-sky-100 shadow-sm">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-sky-50 text-sky-700">
+                        <th className="py-3 px-4 font-bold rounded-tl-2xl">申請單位</th>
+                        <th className="py-3 px-4 font-bold">申請人員</th>
+                        <th className="py-3 px-4 font-bold">待採買物品</th>
+                        <th className="py-3 px-4 font-bold rounded-tr-2xl text-right">申請日期</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {purchasingRequests.map(req => (
+                        <tr key={req.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+                          <td className="py-3 px-4 text-gray-800 font-medium">{req.departmentName}</td>
+                          <td className="py-3 px-4 text-gray-600">{req.applicantName}</td>
+                          <td className="py-3 px-4">
+                            <div className="flex flex-wrap gap-1">
+                              {req.items.map((item, idx) => (
+                                <span key={idx} className="bg-sky-100 text-sky-700 text-xs px-2 py-1 rounded-md font-medium border border-sky-200">
+                                  {item.name} <span className="font-bold ml-1">x{item.quantity}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-right text-gray-500 text-sm">
+                            {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('zh-TW') : 'N/A'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
 
             <div className="bg-orange-50 border-2 border-orange-100 rounded-2xl p-6 mb-8">
               <h2 className="text-xl font-bold text-orange-700 mb-6 flex items-center gap-2"><Plus className="w-5 h-5"/> 新增採購單</h2>
@@ -390,23 +424,31 @@ export default function ManagementPage() {
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-orange-100 mb-6">
-                <h3 className="font-bold text-gray-700 mb-3 text-sm">加入或編輯採買品項</h3>
-                <div className="flex flex-col md:flex-row gap-2">
-                  <select value={procCatId} onChange={e => {setProcCatId(e.target.value); setProcSupplyId('');}} className="flex-1 rounded-xl border-2 border-orange-100 px-3 py-2">
-                    <option value="">-- 先選物品類別 --</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <select value={procSupplyId} onChange={e => setProcSupplyId(e.target.value)} disabled={!procCatId} className="flex-[2] rounded-xl border-2 border-orange-100 px-3 py-2 disabled:opacity-50">
-                    <option value="">-- 再選物品名稱 --</option>
-                    {procFilteredSupplies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                  <div className="flex flex-col flex-1">
+                <h3 className="font-bold text-gray-700 mb-3 text-sm">加入採買品項</h3>
+                <div className="flex flex-col md:flex-row gap-2 items-end">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">物品類別</label>
+                    <select value={procCatId} onChange={e => {setProcCatId(e.target.value); setProcSupplyId('');}} className="w-full rounded-xl border-2 border-orange-100 px-3 py-2">
+                      <option value="">-- 先選物品類別 --</option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex-[2]">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">物品名稱</label>
+                    <select value={procSupplyId} onChange={e => setProcSupplyId(e.target.value)} disabled={!procCatId} className="w-full rounded-xl border-2 border-orange-100 px-3 py-2 disabled:opacity-50">
+                      <option value="">-- 再選物品名稱 --</option>
+                      {procFilteredSupplies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="w-24">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">採買數量</label>
                     <input type="number" placeholder="數量" value={procQty} onChange={e => setProcQty(parseInt(e.target.value))} min="1" className="w-full rounded-xl border-2 border-orange-100 px-3 py-2" />
                   </div>
-                  <div className="flex flex-col flex-1">
+                  <div className="w-32">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">單價 (元)</label>
                     <input type="number" placeholder="單價($)" value={procPrice} onChange={e => setProcPrice(parseInt(e.target.value))} min="0" className="w-full rounded-xl border-2 border-orange-100 px-3 py-2" />
                   </div>
-                  <button onClick={handleAddProcItem} className="bg-orange-400 hover:bg-orange-500 text-white px-6 py-2 rounded-xl font-bold whitespace-nowrap">儲存品項</button>
+                  <button onClick={handleAddProcItem} className="bg-orange-400 hover:bg-orange-500 text-white px-6 py-2 rounded-xl font-bold whitespace-nowrap h-[44px]">儲存品項</button>
                 </div>
               </div>
 
@@ -430,7 +472,6 @@ export default function ManagementPage() {
                           <td className="py-3 text-gray-600">${item.unitPrice}</td>
                           <td className="py-3 font-bold text-gray-800">${item.quantity * item.unitPrice}</td>
                           <td className="py-3 text-right">
-                            <button onClick={() => handleEditProcItem(item)} className="p-2 text-sky-500 hover:bg-sky-100 rounded-lg mr-1"><Edit3 className="w-4 h-4"/></button>
                             <button onClick={() => handleRemoveProcItem(item.supplyId)} className="p-2 text-red-400 hover:bg-red-100 hover:text-red-600 rounded-lg"><Trash2 className="w-4 h-4"/></button>
                           </td>
                         </tr>

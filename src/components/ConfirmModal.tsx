@@ -9,9 +9,11 @@ interface ConfirmModalProps {
   message: string;
   onConfirm: () => void;
   onCancel: () => void;
+  confirmText?: string;
+  confirmColor?: string;
 }
 
-export default function ConfirmModal({ isOpen, title, message, onConfirm, onCancel }: ConfirmModalProps) {
+export default function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, confirmText, confirmColor }: ConfirmModalProps) {
   if (!isOpen) return null;
 
   return (
@@ -33,9 +35,9 @@ export default function ConfirmModal({ isOpen, title, message, onConfirm, onCanc
           </button>
           <button 
             onClick={() => { onConfirm(); onCancel(); }}
-            className="flex-1 px-4 py-3 rounded-2xl bg-red-400 text-white font-bold hover:bg-red-500 transition-colors shadow-sm shadow-red-200"
+            className={`flex-1 px-4 py-3 rounded-2xl text-white font-bold transition-colors shadow-sm ${confirmColor || 'bg-red-400 hover:bg-red-500 shadow-red-200'}`}
           >
-            確定刪除
+            {confirmText || '確定刪除'}
           </button>
         </div>
       </div>

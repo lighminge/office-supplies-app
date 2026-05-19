@@ -25,10 +25,13 @@ export default function RequestPage() {
   const [currentQty, setCurrentQty] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // Ref for the printable area
+  // Print references
   const printRef = useRef<HTMLDivElement>(null);
+  const printPastRef = useRef<HTMLDivElement>(null);
+  const [printingRequest, setPrintingRequest] = useState<RequestRecord | null>(null);
 
   const fetchData = async () => {
     try {
@@ -70,6 +73,7 @@ export default function RequestPage() {
     }
     setCurrentItemId('');
     setCurrentQty(1);
+    setIsAddItemModalOpen(false);
   };
 
   const handleRemoveItem = (id: string) => {
@@ -80,6 +84,19 @@ export default function RequestPage() {
     content: () => printRef.current,
     documentTitle: `用品申請單-${new Date().toLocaleDateString('zh-TW')}`,
   });
+
+  const handlePrintPastRequest = useReactToPrint({
+    content: () => printPastRef.current,
+    documentTitle: `用品申請單`,
+    onAfterPrint: () => setPrintingRequest(null)
+  });
+
+  const triggerPrintPastRequest = (req: RequestRecord) => {
+    setPrintingRequest(req);
+    setTimeout(() => {
+      handlePrintPastRequest();
+    }, 100);
+  };
 
   const handleSubmitClick = () => {
     if (!selectedDeptId || !selectedPersonId || selectedItems.length === 0) {
@@ -123,7 +140,6 @@ export default function RequestPage() {
   const filteredPersonnel = personnel.filter(p => p.departmentId === selectedDeptId);
   const filteredSupplies = supplies.filter(s => selectedCategoryId ? s.categoryId === selectedCategoryId : true);
   
-  // 該申請人未核可(pending)的申請單
   const userPendingRequests = pendingRequests.filter(r => 
     r.applicantId === selectedPersonId && (!r.status || r.status === 'pending')
   ).sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
@@ -136,7 +152,60 @@ export default function RequestPage() {
         message="您確定要送出這張申請單嗎？送出後將產生 PDF 檔案供您列印。"
         onConfirm={handleConfirmSubmit}
         onCancel={() => setConfirmOpen(false)}
+        confirmText="確認"
+        confirmColor="bg-sky-500 hover:bg-sky-600 shadow-sky-200"
       />
+
+      {isAddItemModalOpen && (
+        <div className="fixed inset-0 bg-sky-100/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-sm w-full shadow-lg border-2 border-sky-100 animate-in zoom-in-95 duration-200">
+            <h3 className="font-bold text-sky-700 text-xl mb-6 flex items-center gap-2">
+              <Plus className="w-6 h-6" /> 加入申請物品
+            </h3>
+            <div className="flex flex-col gap-4 mb-8">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">物品類別</label>
+                <select 
+                  value={selectedCategoryId}
+                  onChange={e => { setSelectedCategoryId(e.target.value); setCurrentItemId(''); }}
+                  className="w-full rounded-xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300"
+                >
+                  <option value="">-- 先選擇類別 --</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">物品名稱</label>
+                <select 
+                  value={currentItemId}
+                  onChange={e => setCurrentItemId(e.target.value)}
+                  disabled={!selectedCategoryId}
+                  className="w-full rounded-xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 disabled:opacity-50"
+                >
+                  <option value="">-- 再選擇物品 --</option>
+                  {filteredSupplies.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} (庫存: {s.quantity})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">申請數量</label>
+                <input 
+                  type="number" 
+                  value={currentQty}
+                  onChange={e => setCurrentQty(parseInt(e.target.value))}
+                  min="1"
+                  className="w-full rounded-xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 text-center"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setIsAddItemModalOpen(false)} className="flex-1 px-4 py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold hover:bg-gray-50">取消</button>
+              <button onClick={handleAddItem} className="flex-1 px-4 py-3 rounded-2xl bg-sky-400 text-white font-bold hover:bg-sky-500 shadow-sm shadow-sky-200">確認加入</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Link href="/" className="inline-flex items-center gap-2 text-sky-500 hover:text-sky-600 mb-6 font-medium bg-white px-4 py-2 rounded-full shadow-sm border border-sky-100 transition-transform hover:-translate-x-1">
         <ArrowLeft className="w-4 h-4" /> 回首頁
@@ -177,62 +246,33 @@ export default function RequestPage() {
           </div>
         </div>
 
-        <div className="bg-sky-50 rounded-2xl p-6 mb-8">
-          <h3 className="font-bold text-sky-700 mb-4 flex items-center gap-2">
-            <Plus className="w-5 h-5" /> 加入申請物品
-          </h3>
-          <div className="flex flex-col md:flex-row gap-4">
-            <select 
-              value={selectedCategoryId}
-              onChange={e => { setSelectedCategoryId(e.target.value); setCurrentItemId(''); }}
-              className="flex-1 rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300"
-            >
-              <option value="">-- 先選擇類別 --</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <select 
-              value={currentItemId}
-              onChange={e => setCurrentItemId(e.target.value)}
-              disabled={!selectedCategoryId}
-              className="flex-[2] rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300 disabled:opacity-50"
-            >
-              <option value="">-- 再選擇物品 --</option>
-              {filteredSupplies.map(s => (
-                <option key={s.id} value={s.id}>{s.name} (庫存: {s.quantity})</option>
-              ))}
-            </select>
-            <input 
-              type="number" 
-              value={currentQty}
-              onChange={e => setCurrentQty(parseInt(e.target.value))}
-              min="1"
-              className="w-24 rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300 text-center"
-            />
-            <button 
-              onClick={handleAddItem}
-              className="bg-sky-400 hover:bg-sky-500 text-white px-6 py-2 rounded-xl font-bold transition-colors"
-            >
-              加入
-            </button>
-          </div>
+        <div className="flex items-center justify-between mb-4 mt-8">
+          <h3 className="font-bold text-gray-700 text-lg">已選取清單</h3>
+          <button 
+            onClick={() => setIsAddItemModalOpen(true)}
+            className="bg-sky-100 hover:bg-sky-200 text-sky-600 px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-colors"
+          >
+            <Plus className="w-5 h-5" /> 新增申請物品
+          </button>
         </div>
 
-        {selectedItems.length > 0 && (
-          <div className="mb-8">
-            <h3 className="font-bold text-gray-700 mb-4">已選取清單</h3>
-            <ul className="space-y-3">
-              {selectedItems.map(item => (
-                <li key={item.supplyId} className="flex justify-between items-center bg-white border border-sky-100 rounded-xl p-4 shadow-sm">
-                  <span className="font-medium text-gray-800">{item.name}</span>
-                  <div className="flex items-center gap-4">
-                    <span className="text-sky-600 font-bold">x {item.quantity}</span>
-                    <button onClick={() => handleRemoveItem(item.supplyId)} className="text-gray-400 hover:text-red-500 p-1">
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+        {selectedItems.length > 0 ? (
+          <ul className="space-y-3 mb-8">
+            {selectedItems.map(item => (
+              <li key={item.supplyId} className="flex justify-between items-center bg-white border border-sky-100 rounded-xl p-4 shadow-sm">
+                <span className="font-medium text-gray-800">{item.name}</span>
+                <div className="flex items-center gap-4">
+                  <span className="text-sky-600 font-bold">x {item.quantity}</span>
+                  <button onClick={() => handleRemoveItem(item.supplyId)} className="text-gray-400 hover:text-red-500 p-1">
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-center py-10 bg-sky-50 rounded-xl border-2 border-dashed border-sky-100 mb-8">
+            <p className="text-gray-400">目前還沒有加入任何物品喔！</p>
           </div>
         )}
 
@@ -242,7 +282,7 @@ export default function RequestPage() {
           className="w-full bg-sky-500 hover:bg-sky-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-sky-200 transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
         >
           <Printer className="w-6 h-6" />
-          {isSubmitting ? '處理中...' : '送出並產生 PDF 申請單 ✨'}
+          {isSubmitting ? '處理中...' : '送出申請單 ✨'}
         </button>
       </div>
 
@@ -261,6 +301,7 @@ export default function RequestPage() {
                     <th className="pb-2">申請日期</th>
                     <th className="pb-2">申請物品 (數量)</th>
                     <th className="pb-2">狀態</th>
+                    <th className="pb-2 text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -280,6 +321,11 @@ export default function RequestPage() {
                       <td className="py-3">
                         <span className="bg-yellow-100 text-yellow-600 px-2 py-1 rounded-lg text-xs font-bold">未核可</span>
                       </td>
+                      <td className="py-3 text-right">
+                         <button onClick={() => triggerPrintPastRequest(req)} className="p-2 bg-blue-50 text-blue-500 rounded-lg hover:bg-blue-100" title="補列印申請單">
+                           <Printer className="w-4 h-4" />
+                         </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -289,7 +335,7 @@ export default function RequestPage() {
         </div>
       )}
 
-      {/* Hidden printable area */}
+      {/* Hidden printable area for current request */}
       <div className="hidden">
         <div ref={printRef} className="p-10 font-handwriting text-gray-800 max-w-[800px] mx-auto bg-white">
           <h1 className="text-3xl font-bold text-center mb-8 border-b-2 border-gray-800 pb-4">辦公室用品申請單</h1>
@@ -324,21 +370,56 @@ export default function RequestPage() {
           </table>
 
           <div className="flex justify-between mt-20 pt-10 text-lg">
-            <div className="text-center w-48">
-              <div className="border-b border-gray-800 pb-10"></div>
-              <p className="mt-2 font-bold">申請人簽章</p>
-            </div>
-            <div className="text-center w-48">
-              <div className="border-b border-gray-800 pb-10"></div>
-              <p className="mt-2 font-bold">單位主管簽章</p>
-            </div>
-            <div className="text-center w-48">
-              <div className="border-b border-gray-800 pb-10"></div>
-              <p className="mt-2 font-bold">管理部核發</p>
-            </div>
+            <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">申請人簽章</p></div>
+            <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">單位主管簽章</p></div>
+            <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">管理部核發</p></div>
           </div>
         </div>
       </div>
+
+      {/* Hidden printable area for past requests */}
+      <div className="hidden">
+        <div ref={printPastRef} className="p-10 font-handwriting text-gray-800 max-w-[800px] mx-auto bg-white">
+          <h1 className="text-3xl font-bold text-center mb-8 border-b-2 border-gray-800 pb-4">辦公室用品申請單</h1>
+          
+          <div className="flex justify-between mb-8 text-lg">
+            <div>
+              <p className="mb-2"><span className="font-bold">申請單號：</span> {printingRequest?.id}</p>
+              <p className="mb-2"><span className="font-bold">申請單位：</span> {printingRequest?.departmentName}</p>
+              <p><span className="font-bold">申請人員：</span> {printingRequest?.applicantName}</p>
+            </div>
+            <div>
+              <p><span className="font-bold">申請日期：</span> {printingRequest?.createdAt?.toDate ? printingRequest.createdAt.toDate().toLocaleDateString('zh-TW') : ''}</p>
+            </div>
+          </div>
+
+          <table className="w-full text-left border-collapse mb-10 text-lg">
+            <thead>
+              <tr>
+                <th className="border-b-2 border-gray-800 py-2">項次</th>
+                <th className="border-b-2 border-gray-800 py-2">物品名稱</th>
+                <th className="border-b-2 border-gray-800 py-2 text-right">數量</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printingRequest?.items.map((item, index) => (
+                <tr key={index}>
+                  <td className="border-b border-gray-300 py-3">{index + 1}</td>
+                  <td className="border-b border-gray-300 py-3">{item.name}</td>
+                  <td className="border-b border-gray-300 py-3 text-right">{item.quantity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="flex justify-between mt-20 pt-10 text-lg">
+            <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">申請人簽章</p></div>
+            <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">單位主管簽章</p></div>
+            <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">管理部核發</p></div>
+          </div>
+        </div>
+      </div>
+
     </main>
   );
 }
