@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -27,14 +27,14 @@ interface ItemFormProps {
 }
 
 export default function ItemForm({ initialData, categories, icons, onSubmit, onCancel }: ItemFormProps) {
-  const { register, handleSubmit, formState: { errors }, watch, reset } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors }, watch, reset, setValue } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       name: '',
       categoryId: categories.length > 0 ? categories[0].id : '',
       quantity: 0,
       minQuantity: 0,
-      iconId: icons.length > 0 ? icons[0].id : '',
+      iconId: '',
     }
   });
 
@@ -53,10 +53,25 @@ export default function ItemForm({ initialData, categories, icons, onSubmit, onC
         categoryId: categories.length > 0 ? categories[0].id : '',
         quantity: 0,
         minQuantity: 0,
-        iconId: icons.length > 0 ? icons[0].id : '',
+        iconId: '',
       });
     }
-  }, [initialData, reset, categories, icons]);
+  }, [initialData, reset, categories]);
+
+  const selectedCategoryId = watch('categoryId');
+  const filteredIcons = icons.filter(i => i.categoryId === selectedCategoryId);
+
+  // When category changes, reset selected icon if it's not valid for the new category
+  useEffect(() => {
+    if (filteredIcons.length > 0) {
+      const currentIconId = watch('iconId');
+      if (!filteredIcons.find(i => i.id === currentIconId)) {
+        setValue('iconId', filteredIcons[0].id);
+      }
+    } else {
+      setValue('iconId', '');
+    }
+  }, [selectedCategoryId, filteredIcons, setValue, watch]);
 
   const selectedIconId = watch('iconId');
   const selectedIconData = icons.find(i => i.id === selectedIconId);
@@ -94,15 +109,17 @@ export default function ItemForm({ initialData, categories, icons, onSubmit, onC
            <label className="block text-sm font-medium text-gray-700 mb-1">插圖</label>
            <div className="flex items-center gap-2">
              <div className="p-2 bg-sky-50 rounded-xl">
-               {selectedIconData && React.createElement((Icons as any)[selectedIconData.name] || Icons.HelpCircle, { className: 'w-6 h-6 text-sky-500' })}
+               {selectedIconData ? React.createElement((Icons as any)[selectedIconData.name] || Icons.HelpCircle, { className: 'w-6 h-6 text-sky-500' }) : <Icons.HelpCircle className="w-6 h-6 text-gray-400" />}
              </div>
              <select 
               {...register('iconId')} 
               className="flex-1 rounded-2xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300 bg-white"
              >
-               {icons.map(icon => <option key={icon.id} value={icon.id}>{icon.label}</option>)}
+               {filteredIcons.length === 0 && <option value="">無對應插圖</option>}
+               {filteredIcons.map(icon => <option key={icon.id} value={icon.id}>{icon.label}</option>)}
              </select>
            </div>
+           {errors.iconId && <p className="text-red-400 text-xs mt-1 ml-2">{errors.iconId.message}</p>}
         </div>
       </div>
 

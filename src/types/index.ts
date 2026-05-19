@@ -7,6 +7,7 @@ export interface AppIcon {
   id: string;
   name: string; // Lucide icon name, e.g. "PenTool"
   label: string; // Chinese label, e.g. "原子筆"
+  categoryId: string; // 新增：對應的分類ID
 }
 
 export interface Department {
@@ -43,6 +44,7 @@ export interface RequestRecord {
   applicantId: string;
   applicantName: string; // Cached
   items: RequestItem[];
+  status: 'pending' | 'approved' | 'purchasing' | 'completed'; // 新增：狀態
   createdAt: any;
 }
 
