@@ -5,6 +5,8 @@ import { OfficeSupply } from '@/types';
 import ItemCard from '@/components/ItemCard';
 import ItemForm from '@/components/ItemForm';
 import { PlusCircle, Search, Sparkles } from 'lucide-react';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 export default function Home() {
   const [supplies, setSupplies] = useState<OfficeSupply[]>([]);
@@ -16,9 +18,12 @@ export default function Home() {
   
   const fetchSupplies = async () => {
     try {
-      const res = await fetch('/api/supplies');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!db) throw new Error("Firebase db not initialized");
+      const querySnapshot = await getDocs(collection(db, 'supplies'));
+      const data = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as OfficeSupply[];
       setSupplies(data);
     } catch (error) {
       console.error('Failed to fetch supplies', error);
@@ -42,24 +47,17 @@ export default function Home() {
   const handleSubmit = async (data: any) => {
     try {
       if (editingItem) {
-        await fetch(`/api/supplies/${editingItem.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
+        const docRef = doc(db, 'supplies', editingItem.id);
+        await updateDoc(docRef, { ...data, updatedAt: serverTimestamp() });
       } else {
-        await fetch('/api/supplies', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
+        await addDoc(collection(db, 'supplies'), { ...data, updatedAt: serverTimestamp() });
       }
       setIsFormOpen(false);
       setEditingItem(null);
       fetchSupplies();
     } catch (error) {
       console.error('Error saving item', error);
-      alert('儲存失敗，請確認 Firebase 設定是否正確！(已使用假資料測試前端 UI)');
+      alert('儲存失敗，請確認 Firebase 設定或是網路連線是否正常！');
       setIsFormOpen(false);
       setEditingItem(null);
     }
@@ -68,7 +66,7 @@ export default function Home() {
   const handleDelete = async (id: string) => {
     if (!confirm('確定要刪除這個可愛的物品嗎？ 🥺')) return;
     try {
-      await fetch(`/api/supplies/${id}`, { method: 'DELETE' });
+      await deleteDoc(doc(db, 'supplies', id));
       fetchSupplies();
     } catch (error) {
       console.error('Error deleting item', error);
