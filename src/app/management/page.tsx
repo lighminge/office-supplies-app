@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Package, Sparkles, Plus, Edit3, Trash2, Tag, Image as ImageIcon, ShoppingCart, Calendar, CheckSquare } from 'lucide-react';
 import { db, getNextSerial } from '@/lib/firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
 import { OfficeSupply, Category, AppIcon, LUCIDE_ICONS_LIST, LUCIDE_ICONS_MAP, RequestRecord, ProcurementRecord, ProcurementItem } from '@/types';
 import ItemForm from '@/components/ItemForm';
 import ItemCard from '@/components/ItemCard';
@@ -25,6 +25,7 @@ export default function ManagementPage() {
 
   // Filters & Pagination
   const [supplyCategoryFilter, setSupplyCategoryFilter] = useState('');
+  const [supplyKeywordFilter, setSupplyKeywordFilter] = useState('');
   const [iconCategoryFilter, setIconCategoryFilter] = useState('');
   const [supplyPage, setSupplyPage] = useState(1);
   const itemsPerPage = 12;
@@ -134,8 +135,12 @@ export default function ManagementPage() {
     });
   };
 
-  const filteredSupplies = supplyCategoryFilter ? supplies.filter(s => s.categoryId === supplyCategoryFilter) : supplies;
-  const totalCategoryQty = filteredSupplies.reduce((sum, s) => sum + s.quantity, 0);
+  const filteredSupplies = supplies.filter(s => {
+    const matchCategory = supplyCategoryFilter ? s.categoryId === supplyCategoryFilter : true;
+    const matchKeyword = supplyKeywordFilter ? s.name.toLowerCase().includes(supplyKeywordFilter.toLowerCase()) : true;
+    return matchCategory && matchKeyword;
+  });
+  const totalCategoryQty = categories.length; // 修正為計算有幾個類別
   const paginatedSupplies = filteredSupplies.slice((supplyPage - 1) * itemsPerPage, supplyPage * itemsPerPage);
   const totalSupplyPages = Math.ceil(filteredSupplies.length / itemsPerPage) || 1;
 
@@ -151,6 +156,7 @@ export default function ManagementPage() {
 
   // Edit logic for procurement items
   const [editingProcSupplyId, setEditingProcSupplyId] = useState('');
+  const [editingHistoryProcId, setEditingHistoryProcId] = useState('');
 
   // Load from purchasing requests automatically
   useEffect(() => {
@@ -215,18 +221,32 @@ export default function ManagementPage() {
     const totalAmount = procItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
     requestAction('確定要儲存這筆採購單嗎？', async () => {
       try {
-        const serial = await getNextSerial('PROC');
-        await addDoc(collection(db, 'procurements'), {
-          id: serial,
-          date: procDate,
-          location: procLocation,
-          items: procItems,
-          totalAmount,
-          isRestocked: false,
-          createdAt: serverTimestamp()
-        });
-        alert('採購單建立成功！');
-        setProcDate(''); setProcLocation(''); setProcItems([]); fetchData();
+        if (editingHistoryProcId) {
+          await updateDoc(doc(db, 'procurements', editingHistoryProcId), {
+            date: procDate,
+            location: procLocation,
+            items: procItems,
+            totalAmount,
+            updatedAt: serverTimestamp()
+          });
+          alert('採購單修改成功！');
+        } else {
+          const serial = await getNextSerial('PROC');
+          await setDoc(doc(db, 'procurements', serial), {
+            id: serial,
+            date: procDate,
+            location: procLocation,
+            items: procItems,
+            totalAmount,
+            isRestocked: false,
+            createdAt: serverTimestamp()
+          });
+          alert('採購單建立成功！');
+        }
+        setProcDate(''); setProcLocation(''); setProcItems([]); 
+        setProcCatId(''); setProcSupplyId(''); setProcQty(1); setProcPrice(0); setEditingProcSupplyId('');
+        setEditingHistoryProcId('');
+        fetchData();
       } catch (e: any) { alert('儲存失敗：' + e.message); }
     });
   };
@@ -273,8 +293,19 @@ export default function ManagementPage() {
     setRestockDateModalOpen(true);
   };
 
+  const handleEditProcurementHistory = (proc: ProcurementRecord) => {
+    if (proc.isRestocked) return alert('已入庫的採購單無法修改！');
+    setProcDate(proc.date);
+    setProcLocation(proc.location);
+    setProcItems(proc.items);
+    setEditingHistoryProcId(proc.id);
+  };
+
   const handleDeleteProcurement = (id: string) => requestAction('確定要刪除這筆採購單嗎？', async () => {
-    await deleteDoc(doc(db, 'procurements', id)); fetchData();
+    try {
+      await deleteDoc(doc(db, 'procurements', id)); 
+      fetchData();
+    } catch (e: any) { alert('刪除失敗：' + e.message); }
   });
 
   const procFilteredSupplies = supplies.filter(s => procCatId ? s.categoryId === procCatId : true);
@@ -441,9 +472,16 @@ export default function ManagementPage() {
                   <option value="">全部類別</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
+                <input 
+                  type="text"
+                  placeholder="輸入關鍵字搜尋..."
+                  value={supplyKeywordFilter}
+                  onChange={e => { setSupplyKeywordFilter(e.target.value); setSupplyPage(1); }}
+                  className="rounded-xl border-2 border-sky-100 px-4 py-1 focus:outline-none focus:border-sky-300 ml-2 w-40"
+                />
               </div>
               <div className="bg-sky-50 px-4 py-2 rounded-xl text-sky-600 font-bold border border-sky-100">
-                目前類別總庫存數量：{totalCategoryQty}
+                {supplyCategoryFilter ? categories.find(c => c.id === supplyCategoryFilter)?.name : '全部類別'} 總計 {filteredSupplies.length} 項
               </div>
             </div>
 
@@ -482,7 +520,10 @@ export default function ManagementPage() {
         {activeTab === 'procurement' && (
           <div>
             <div className="bg-orange-50 border-2 border-orange-100 rounded-2xl p-6 mb-8">
-              <h2 className="text-xl font-bold text-orange-700 mb-6 flex items-center gap-2"><Plus className="w-5 h-5"/> 新增採購單</h2>
+              <h2 className="text-xl font-bold text-orange-700 mb-6 flex items-center gap-2">
+                {editingHistoryProcId ? <Edit3 className="w-5 h-5"/> : <Plus className="w-5 h-5"/>} 
+                {editingHistoryProcId ? `修改採購單 (${editingHistoryProcId})` : '新增採購單'}
+              </h2>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div>
@@ -564,12 +605,17 @@ export default function ManagementPage() {
               )}
 
               <button onClick={handleSaveProcurement} disabled={procItems.length === 0} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-2xl font-bold text-lg disabled:opacity-50 transition-transform hover:scale-[1.02] disabled:hover:scale-100 shadow-lg shadow-orange-200">
-                儲存這筆採購單 ✨
+                {editingHistoryProcId ? '儲存修改這筆採購單 ✨' : '儲存這筆採購單 ✨'}
               </button>
+              {editingHistoryProcId && (
+                <button onClick={() => { setEditingHistoryProcId(''); setProcDate(''); setProcLocation(''); setProcItems([]); }} className="w-full mt-3 bg-gray-100 hover:bg-gray-200 text-gray-600 py-3 rounded-2xl font-bold text-lg transition-colors">
+                  取消修改
+                </button>
+              )}
             </div>
 
             <h2 className="text-xl font-bold text-gray-800 mb-4 border-b-2 border-gray-100 pb-2 flex items-center justify-between">
-              採購清單
+              <span>歷史採購清單 (總計 {filteredProcurements.length} 筆)</span>
             </h2>
 
             <div className="flex flex-col md:flex-row gap-4 mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100 items-center">
@@ -601,6 +647,7 @@ export default function ManagementPage() {
                         />
                       </div>
                     </th>
+                    <th className="pb-3 pt-3 font-bold w-12 text-center">序號</th>
                     <th className="pb-3 pt-3 font-bold">單號</th>
                     <th className="pb-3 pt-3 font-bold">採買日期</th>
                     <th className="pb-3 pt-3 font-bold">地點</th>
@@ -610,7 +657,7 @@ export default function ManagementPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedProcs.map(proc => (
+                  {paginatedProcs.map((proc, i) => (
                     <tr key={proc.id} className="border-b border-gray-50 hover:bg-sky-50/50">
                       <td className="py-3 pl-5">
                          {!proc.isRestocked && (
@@ -625,6 +672,7 @@ export default function ManagementPage() {
                           />
                          )}
                       </td>
+                      <td className="py-3 text-gray-500 font-medium text-center">{(procPage - 1) * procPerPage + i + 1}</td>
                       <td className="py-3 font-bold text-gray-800">{proc.id}</td>
                       <td className="py-3 text-gray-600">{proc.date}</td>
                       <td className="py-3 font-medium">{proc.location}</td>
@@ -640,6 +688,9 @@ export default function ManagementPage() {
                         <div className="flex justify-end gap-2">
                           {!proc.isRestocked && (
                             <>
+                              <button onClick={() => handleEditProcurementHistory(proc)} className="bg-sky-100 hover:bg-sky-200 text-sky-600 p-2 rounded-xl text-sm" title="修改內容">
+                                <Edit3 className="w-4 h-4" />
+                              </button>
                               <button onClick={() => openRestockModal(proc)} className="bg-green-400 hover:bg-green-500 text-white p-2 rounded-xl text-sm" title="確認入庫">
                                 <Package className="w-4 h-4" />
                               </button>

@@ -128,9 +128,9 @@ export default function RequestPage() {
     if (!editingReq) return;
     try {
       const cleanItems = editItems.map(item => ({
-        supplyId: item.supplyId,
-        name: item.name,
-        quantity: item.quantity || 1
+        supplyId: item.supplyId || '',
+        name: item.name || '',
+        quantity: Number(item.quantity) || 1
       }));
       await updateDoc(doc(db, 'requests', editingReq.id), { items: cleanItems });
       setEditingReq(null);
@@ -259,6 +259,7 @@ export default function RequestPage() {
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <div className="flex gap-2 items-center">
+                  {editItemId && <div className="p-2 bg-sky-50 rounded-xl">{renderIcon(editItemId)}</div>}
                   <select value={editItemId} onChange={e => setEditItemId(e.target.value)} disabled={!editCategoryId} className="flex-1 p-2 border-2 border-sky-100 rounded-xl outline-none disabled:opacity-50">
                     <option value="">-- 再選擇物品 --</option>
                     {editFilteredSupplies.map(s => <option key={s.id} value={s.id}>{s.name} (庫存:{s.quantity})</option>)}
@@ -298,17 +299,20 @@ export default function RequestPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">物品名稱</label>
-                <select 
-                  value={currentItemId}
-                  onChange={e => setCurrentItemId(e.target.value)}
-                  disabled={!selectedCategoryId}
-                  className="w-full rounded-xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 disabled:opacity-50"
-                >
-                  <option value="">-- 再選擇物品 --</option>
-                  {filteredSupplies.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} (庫存: {s.quantity})</option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  {currentItemId && <div className="p-2 bg-sky-50 rounded-xl">{renderIcon(currentItemId)}</div>}
+                  <select 
+                    value={currentItemId}
+                    onChange={e => setCurrentItemId(e.target.value)}
+                    disabled={!selectedCategoryId}
+                    className="w-full rounded-xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 disabled:opacity-50"
+                  >
+                    <option value="">-- 再選擇物品 --</option>
+                    {filteredSupplies.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} (庫存: {s.quantity})</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">申請數量</label>

@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { ArrowLeft, ClipboardList, CheckCircle, Clock, Trash2, ShoppingCart, RotateCcw, Package, CheckSquare, Edit3, Save } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
-import { RequestRecord, Department, Personnel, RequestItem, OfficeSupply, Category } from '@/types';
+import { RequestRecord, Department, Personnel, RequestItem, OfficeSupply, Category, AppIcon } from '@/types';
 import ConfirmModal from '@/components/ConfirmModal';
+import * as Icons from 'lucide-react';
 
 export default function WorkflowPage() {
   const [activeTab, setActiveTab] = useState<'pending' | 'approved'>('pending');
@@ -38,23 +39,34 @@ export default function WorkflowPage() {
   const [newItemSupId, setNewItemSupId] = useState('');
   const [newItemQty, setNewItemQty] = useState(1);
 
+  const [icons, setIcons] = useState<AppIcon[]>([]);
+
   const fetchData = async () => {
     try {
-      const [reqSnap, deptSnap, perSnap, supSnap, catSnap] = await Promise.all([
+      const [reqSnap, deptSnap, perSnap, supSnap, catSnap, iconSnap] = await Promise.all([
         getDocs(collection(db, 'requests')),
         getDocs(collection(db, 'departments')),
         getDocs(collection(db, 'personnel')),
         getDocs(collection(db, 'supplies')),
         getDocs(collection(db, 'categories')),
+        getDocs(collection(db, 'icons')),
       ]);
       setRequests(reqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestRecord)).sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
       setDepartments(deptSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Department)));
       setPersonnel(perSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Personnel)));
       setSupplies(supSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfficeSupply)));
       setCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
+      setIcons(iconSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppIcon)));
     } catch (error) {
       console.error('Error fetching workflow data', error);
     }
+  };
+
+  const renderIcon = (supplyId: string) => {
+    const supply = supplies.find(s => s.id === supplyId);
+    const iconData = icons.find(i => i.id === supply?.iconId);
+    const IconComp = iconData ? (Icons as any)[iconData.name] : Icons.HelpCircle;
+    return <IconComp className="w-5 h-5 text-sky-500 flex-shrink-0" />;
   };
 
   useEffect(() => {
@@ -85,7 +97,12 @@ export default function WorkflowPage() {
   const handleUpdateReq = async () => {
     if (!editingReq) return;
     try {
-      await updateDoc(doc(db, 'requests', editingReq.id), { items: editItems });
+      const cleanItems = editItems.map(item => ({
+        supplyId: item.supplyId || '',
+        name: item.name || '',
+        quantity: Number(item.quantity) || 1
+      }));
+      await updateDoc(doc(db, 'requests', editingReq.id), { items: cleanItems });
       setEditingReq(null);
       alert('修改成功！');
       fetchData();
@@ -235,6 +252,7 @@ export default function WorkflowPage() {
               <label className="block text-sm font-bold text-gray-600 mb-2">已申請的物品</label>
               {editItems.map((item, i) => (
                 <div key={i} className="flex gap-2 mb-3 items-center">
+                  {renderIcon(item.supplyId)}
                   <input className="flex-1 p-3 border-2 border-gray-100 bg-gray-50 rounded-xl text-gray-700 font-medium" value={item.name} disabled />
                   <span className="text-gray-500 font-bold">x</span>
                   <input className="w-24 p-3 border-2 border-sky-100 focus:border-sky-300 focus:ring-2 focus:ring-sky-200 outline-none rounded-xl text-center font-bold text-sky-600" type="number" min="1" value={item.quantity} onChange={e => {
@@ -255,7 +273,8 @@ export default function WorkflowPage() {
                   <option value="">-- 先選擇類別 --</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
+                  {newItemSupId && <div className="p-2 bg-sky-50 rounded-xl">{renderIcon(newItemSupId)}</div>}
                   <select value={newItemSupId} onChange={e => setNewItemSupId(e.target.value)} disabled={!newItemCatId} className="flex-1 p-2 border-2 border-sky-100 rounded-xl outline-none disabled:opacity-50">
                     <option value="">-- 再選擇物品 --</option>
                     {editFilteredSupplies.map(s => <option key={s.id} value={s.id}>{s.name} (庫存:{s.quantity})</option>)}
@@ -485,10 +504,10 @@ export default function WorkflowPage() {
                           <button onClick={() => handleConfirmReceive(req)} className="bg-sky-400 hover:bg-sky-500 text-white p-2 rounded-xl text-sm disabled:opacity-50 disabled:bg-gray-300" title="確認領用 (扣庫存)" disabled={req.status === 'purchasing'}>
                             <Package className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleRevert(req.id)} className="bg-gray-100 hover:bg-gray-200 text-gray-600 p-2 rounded-xl text-sm" title="退回到申請單">
+                          <button onClick={() => handleRevert(req.id)} disabled={req.status === 'purchasing'} className="bg-gray-100 hover:bg-gray-200 text-gray-600 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-gray-100" title="退回到申請單">
                             <RotateCcw className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleDelete(req.id)} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-xl text-sm" title="取消申請(刪除)">
+                          <button onClick={() => handleDelete(req.id)} disabled={req.status === 'purchasing'} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-red-50" title="取消申請(刪除)">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>

@@ -37,7 +37,7 @@ export async function getNextSerial(type: string): Promise<string> {
     }
   });
   
-  return `${datePrefix}${String(nextNum).padStart(4, '0')}`;
+  return `${type}${datePrefix}${String(nextNum).padStart(4, '0')}`;
 }
 
 export { app, db };
