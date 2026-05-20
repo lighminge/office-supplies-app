@@ -168,19 +168,33 @@ export default function WorkflowPage() {
     await updateDoc(doc(db, 'requests', id), { status: 'completed' });
   };
 
-  const handleConfirmReceive = (id: string) => requestAction('確認領用後，將自動扣除對應物品的庫存數量，並將狀態標為「已完成」，確定執行嗎？', async () => {
-    try {
-      await confirmReceiveLogic(id);
-      alert('領用成功！已扣除庫存。');
-      fetchData();
-    } catch (e: any) { alert('處理失敗：' + e.message); }
-  });
+  const handleConfirmReceive = (req: RequestRecord) => {
+    if (req.status === 'purchasing') {
+      return alert('這筆申請單正在採購中，需等待採購完成入庫後才可以領用！');
+    }
+    requestAction('確認領用後，將自動扣除對應物品的庫存數量，並將狀態標為「已完成」，確定執行嗎？', async () => {
+      try {
+        await confirmReceiveLogic(req.id);
+        alert('領用成功！已扣除庫存。');
+        fetchData();
+      } catch (e: any) { alert('處理失敗：' + e.message); }
+    });
+  };
 
   const handleBulkConfirmReceive = () => {
-    if (selectedApproved.length === 0) return alert('請先勾選申請單！');
-    requestAction(`確認領用後，將自動扣除這 ${selectedApproved.length} 筆申請單對應物品的庫存數量，確定執行嗎？`, async () => {
+    const validSelections = selectedApproved.filter(id => {
+      const r = requests.find(req => req.id === id);
+      return r && r.status !== 'purchasing';
+    });
+    
+    if (validSelections.length === 0) return alert('請先勾選可領用的申請單！(採購中的單據無法領用)');
+    if (validSelections.length !== selectedApproved.length) {
+      alert(`已幫您自動略過 ${selectedApproved.length - validSelections.length} 筆正在「採購中」的單據。`);
+    }
+
+    requestAction(`確認領用後，將自動扣除這 ${validSelections.length} 筆申請單對應物品的庫存數量，確定執行嗎？`, async () => {
       try {
-        await Promise.all(selectedApproved.map(id => confirmReceiveLogic(id)));
+        await Promise.all(validSelections.map(id => confirmReceiveLogic(id)));
         setSelectedApproved([]);
         alert('批次領用成功！已扣除庫存。');
         fetchData();
@@ -468,7 +482,7 @@ export default function WorkflowPage() {
                               <ShoppingCart className="w-4 h-4" />
                             </button>
                           )}
-                          <button onClick={() => handleConfirmReceive(req.id)} className="bg-sky-400 hover:bg-sky-500 text-white p-2 rounded-xl text-sm" title="確認領用 (扣庫存)">
+                          <button onClick={() => handleConfirmReceive(req)} className="bg-sky-400 hover:bg-sky-500 text-white p-2 rounded-xl text-sm disabled:opacity-50 disabled:bg-gray-300" title="確認領用 (扣庫存)" disabled={req.status === 'purchasing'}>
                             <Package className="w-4 h-4" />
                           </button>
                           <button onClick={() => handleRevert(req.id)} className="bg-gray-100 hover:bg-gray-200 text-gray-600 p-2 rounded-xl text-sm" title="退回到申請單">

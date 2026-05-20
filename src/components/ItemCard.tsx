@@ -32,13 +32,18 @@ export default function ItemCard({ item, categories, icons, onEdit, onDelete }: 
         
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-bold text-gray-800 truncate">{item.name}</h3>
-          <span className="inline-block px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-lg mt-1 mb-2">
-            {category ? category.name : '未知類別'}
-          </span>
+          <div className="flex items-center gap-2 mt-1 mb-2">
+            <span className="inline-block px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-lg">
+              {category ? category.name : '未知類別'}
+            </span>
+            <span className="inline-block px-2 py-1 bg-sky-50 text-sky-600 text-xs rounded-lg font-medium">
+              單價: ${item.price || 0}
+            </span>
+          </div>
           
           <div className="flex items-center gap-4 text-sm mt-2">
             <div className="flex items-center gap-1">
-              <span className="text-gray-500">數量:</span>
+              <span className="text-gray-500">庫存:</span>
               <span className={`font-bold text-lg ${isLowStock ? 'text-red-500' : 'text-gray-700'}`}>
                 {item.quantity}
               </span>

@@ -27,6 +27,7 @@ export interface OfficeSupply {
   categoryId: string;
   quantity: number;
   minQuantity: number;
+  price: number;
   iconId: string;
   updatedAt?: any;
 }
@@ -62,6 +63,7 @@ export interface ProcurementRecord {
   items: ProcurementItem[];
   totalAmount: number;
   isRestocked: boolean;
+  restockDate?: string; // 新增入庫日期
   createdAt: any;
 }
 

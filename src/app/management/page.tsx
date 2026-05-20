@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Package, Sparkles, Plus, Edit3, Trash2, Tag, Image as ImageIcon, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, Package, Sparkles, Plus, Edit3, Trash2, Tag, Image as ImageIcon, ShoppingCart, Calendar, CheckSquare } from 'lucide-react';
 import { db, getNextSerial } from '@/lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { OfficeSupply, Category, AppIcon, LUCIDE_ICONS_LIST, LUCIDE_ICONS_MAP, RequestRecord, ProcurementRecord, ProcurementItem } from '@/types';
@@ -34,6 +34,16 @@ export default function ManagementPage() {
   const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
   const [confirmMessage, setConfirmMessage] = useState('');
 
+  // Procurement History Filter & Pagination
+  const [procStartDate, setProcStartDate] = useState('');
+  const [procEndDate, setProcEndDate] = useState('');
+  const [procPage, setProcPage] = useState(1);
+  const procPerPage = 10;
+  const [selectedProcs, setSelectedProcs] = useState<string[]>([]);
+  const [restockDateModalOpen, setRestockDateModalOpen] = useState(false);
+  const [restockDate, setRestockDate] = useState(new Date().toISOString().split('T')[0]);
+  const [targetProcForRestock, setTargetProcForRestock] = useState<ProcurementRecord | null>(null);
+
   const fetchData = async () => {
     try {
       const [catSnap, iconSnap, supSnap, procSnap, reqSnap] = await Promise.all([
@@ -64,7 +74,7 @@ export default function ManagementPage() {
     fetchData();
   }, []);
 
-  const requestDelete = (msg: string, action: () => Promise<void>) => {
+  const requestAction = (msg: string, action: () => Promise<void>) => {
     setConfirmMessage(msg);
     setConfirmAction(() => action);
     setConfirmOpen(true);
@@ -81,7 +91,7 @@ export default function ManagementPage() {
       setCatId(''); setCatName(''); fetchData();
     } catch (e: any) { alert('儲存失敗：' + e.message); }
   };
-  const handleDeleteCategory = (id: string) => requestDelete('確定要刪除這個類別嗎？', async () => {
+  const handleDeleteCategory = (id: string) => requestAction('確定要刪除這個類別嗎？', async () => {
     await deleteDoc(doc(db, 'categories', id)); fetchData();
   });
 
@@ -98,7 +108,7 @@ export default function ManagementPage() {
       setIconId(''); setIconCategoryId(''); setIconLabel(LUCIDE_ICONS_MAP[LUCIDE_ICONS_LIST[0]]); setIconName(LUCIDE_ICONS_LIST[0]); fetchData();
     } catch (e: any) { alert('儲存失敗：' + e.message); }
   };
-  const handleDeleteIcon = (id: string) => requestDelete('確定要刪除這個插圖嗎？', async () => {
+  const handleDeleteIcon = (id: string) => requestAction('確定要刪除這個插圖嗎？', async () => {
     await deleteDoc(doc(db, 'icons', id)); fetchData();
   });
 
@@ -114,9 +124,15 @@ export default function ManagementPage() {
       setIsSupplyFormOpen(false); setEditingSupply(null); fetchData();
     } catch (e: any) { alert('儲存失敗：' + e.message); setIsSupplyFormOpen(false); }
   };
-  const handleDeleteSupply = (id: string) => requestDelete('確定要刪除這個可愛的物品嗎？ 🥺', async () => {
-    await deleteDoc(doc(db, 'supplies', id)); fetchData();
-  });
+  const handleDeleteSupply = (id: string) => {
+    const supply = supplies.find(s => s.id === id);
+    if (supply && supply.quantity > 0) {
+      return alert('無法刪除！此物品的庫存數量大於 0。請先將庫存清空後再刪除。');
+    }
+    requestAction('確定要刪除這個可愛的物品嗎？ 🥺', async () => {
+      await deleteDoc(doc(db, 'supplies', id)); fetchData();
+    });
+  };
 
   const filteredSupplies = supplyCategoryFilter ? supplies.filter(s => s.categoryId === supplyCategoryFilter) : supplies;
   const totalCategoryQty = filteredSupplies.reduce((sum, s) => sum + s.quantity, 0);
@@ -132,6 +148,9 @@ export default function ManagementPage() {
   const [procSupplyId, setProcSupplyId] = useState('');
   const [procQty, setProcQty] = useState(1);
   const [procPrice, setProcPrice] = useState(0);
+
+  // Edit logic for procurement items
+  const [editingProcSupplyId, setEditingProcSupplyId] = useState('');
 
   // Load from purchasing requests automatically
   useEffect(() => {
@@ -158,11 +177,18 @@ export default function ManagementPage() {
     const supply = supplies.find(s => s.id === procSupplyId);
     if (!supply) return;
 
-    const existing = procItems.find(i => i.supplyId === procSupplyId);
-    if (existing) {
-      setProcItems(procItems.map(i => i.supplyId === procSupplyId ? { ...i, quantity: i.quantity + procQty, unitPrice: procPrice } : i));
+    if (editingProcSupplyId) {
+       // Updating existing item
+       setProcItems(procItems.map(i => i.supplyId === editingProcSupplyId ? { supplyId: procSupplyId, name: supply.name, quantity: procQty, unitPrice: procPrice } : i));
+       setEditingProcSupplyId('');
     } else {
-      setProcItems([...procItems, { supplyId: procSupplyId, name: supply.name, quantity: procQty, unitPrice: procPrice }]);
+      // Adding new
+      const existing = procItems.find(i => i.supplyId === procSupplyId);
+      if (existing) {
+        setProcItems(procItems.map(i => i.supplyId === procSupplyId ? { ...i, quantity: i.quantity + procQty, unitPrice: procPrice } : i));
+      } else {
+        setProcItems([...procItems, { supplyId: procSupplyId, name: supply.name, quantity: procQty, unitPrice: procPrice }]);
+      }
     }
     setProcSupplyId('');
     setProcQty(1);
@@ -176,56 +202,92 @@ export default function ManagementPage() {
       setProcSupplyId(item.supplyId);
       setProcQty(item.quantity);
       setProcPrice(item.unitPrice);
-      setProcItems(procItems.filter(i => i.supplyId !== item.supplyId));
+      setEditingProcSupplyId(item.supplyId);
     }
   };
 
-  const handleRemoveProcItem = (id: string) => requestDelete('確定要從採購清單中移除這個品項嗎？', async () => {
+  const handleRemoveProcItem = (id: string) => {
     setProcItems(procItems.filter(i => i.supplyId !== id));
-  });
+  };
 
   const handleSaveProcurement = async () => {
     if (!procDate || !procLocation || procItems.length === 0) return alert('請填寫日期、地點並至少加入一項物品！');
     const totalAmount = procItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-    try {
-      const serial = await getNextSerial('PROC');
-      await addDoc(collection(db, 'procurements'), {
-        id: serial,
-        date: procDate,
-        location: procLocation,
-        items: procItems,
-        totalAmount,
-        isRestocked: false,
-        createdAt: serverTimestamp()
-      });
-      alert('採購單建立成功！');
-      setProcDate(''); setProcLocation(''); setProcItems([]); fetchData();
-    } catch (e: any) { alert('儲存失敗：' + e.message); }
+    requestAction('確定要儲存這筆採購單嗎？', async () => {
+      try {
+        const serial = await getNextSerial('PROC');
+        await addDoc(collection(db, 'procurements'), {
+          id: serial,
+          date: procDate,
+          location: procLocation,
+          items: procItems,
+          totalAmount,
+          isRestocked: false,
+          createdAt: serverTimestamp()
+        });
+        alert('採購單建立成功！');
+        setProcDate(''); setProcLocation(''); setProcItems([]); fetchData();
+      } catch (e: any) { alert('儲存失敗：' + e.message); }
+    });
   };
 
-  const handleRestock = (proc: ProcurementRecord) => requestDelete(`確定要將此採購單的物品入庫嗎？總共將更新 ${proc.items.length} 項物品庫存。`, async () => {
+  const processRestock = async (procList: ProcurementRecord[], date: string) => {
     try {
-      for (const item of proc.items) {
-        const supplyRef = doc(db, 'supplies', item.supplyId);
-        const supplyDoc = await getDoc(supplyRef);
-        if (supplyDoc.exists()) {
-          const currentQty = supplyDoc.data().quantity || 0;
-          await updateDoc(supplyRef, { quantity: currentQty + item.quantity });
+      for (const proc of procList) {
+        if (proc.isRestocked) continue;
+        for (const item of proc.items) {
+          const supplyRef = doc(db, 'supplies', item.supplyId);
+          const supplyDoc = await getDoc(supplyRef);
+          if (supplyDoc.exists()) {
+            const currentQty = supplyDoc.data().quantity || 0;
+            await updateDoc(supplyRef, { quantity: currentQty + item.quantity });
+          }
         }
+        await updateDoc(doc(db, 'procurements', proc.id), { isRestocked: true, restockDate: date });
       }
-      await updateDoc(doc(db, 'procurements', proc.id), { isRestocked: true });
       alert('入庫成功！');
       fetchData();
-    } catch (e: any) {
-      alert('入庫失敗：' + e.message);
-    }
-  });
+    } catch (e: any) { alert('入庫失敗：' + e.message); }
+  };
 
-  const handleDeleteProcurement = (id: string) => requestDelete('確定要刪除這筆採購單嗎？', async () => {
+  const handleRestockModalConfirm = () => {
+    if (targetProcForRestock) {
+      processRestock([targetProcForRestock], restockDate);
+    } else if (selectedProcs.length > 0) {
+      const selectedRecords = filteredProcurements.filter(p => selectedProcs.includes(p.id));
+      processRestock(selectedRecords, restockDate);
+    }
+    setRestockDateModalOpen(false);
+    setSelectedProcs([]);
+    setTargetProcForRestock(null);
+  };
+
+  const openRestockModal = (proc?: ProcurementRecord) => {
+    setRestockDate(new Date().toISOString().split('T')[0]);
+    if (proc) {
+      setTargetProcForRestock(proc);
+    } else {
+      if (selectedProcs.length === 0) return alert('請先勾選要入庫的採購單！');
+      setTargetProcForRestock(null);
+    }
+    setRestockDateModalOpen(true);
+  };
+
+  const handleDeleteProcurement = (id: string) => requestAction('確定要刪除這筆採購單嗎？', async () => {
     await deleteDoc(doc(db, 'procurements', id)); fetchData();
   });
 
   const procFilteredSupplies = supplies.filter(s => procCatId ? s.categoryId === procCatId : true);
+
+  // History filter
+  const filteredProcurements = procurements.filter(p => {
+    if (procStartDate && p.date < procStartDate) return false;
+    if (procEndDate && p.date > procEndDate) return false;
+    return true;
+  });
+
+  const totalProcPages = Math.ceil(filteredProcurements.length / procPerPage) || 1;
+  const paginatedProcs = filteredProcurements.slice((procPage - 1) * procPerPage, procPage * procPerPage);
 
   return (
     <main className="min-h-screen p-6 md:p-12 max-w-7xl mx-auto">
@@ -235,7 +297,25 @@ export default function ManagementPage() {
         message={confirmMessage}
         onConfirm={confirmAction}
         onCancel={() => setConfirmOpen(false)}
+        confirmText="確認"
+        confirmColor="bg-sky-500 hover:bg-sky-600 shadow-sky-200"
       />
+
+      {restockDateModalOpen && (
+        <div className="fixed inset-0 bg-sky-100/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full border-2 border-sky-100 shadow-xl animate-in zoom-in-95 duration-200">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-sky-600"><Calendar className="w-5 h-5"/> 選取入庫日期</h2>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">入庫日期</label>
+              <input type="date" value={restockDate} onChange={e => setRestockDate(e.target.value)} className="w-full p-3 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-300" />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setRestockDateModalOpen(false)} className="flex-1 px-4 py-2 bg-gray-100 text-gray-600 rounded-xl font-bold">取消</button>
+              <button onClick={handleRestockModalConfirm} className="flex-1 px-4 py-2 bg-sky-500 text-white rounded-xl font-bold">確認入庫</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Link href="/" className="inline-flex items-center gap-2 text-sky-500 hover:text-sky-600 mb-6 font-medium bg-white px-4 py-2 rounded-full shadow-sm border border-sky-100 transition-transform hover:-translate-x-1">
         <ArrowLeft className="w-4 h-4" /> 回首頁
@@ -401,15 +481,6 @@ export default function ManagementPage() {
         {/* Procurement Tab */}
         {activeTab === 'procurement' && (
           <div>
-            {purchasingRequests.length > 0 && (
-              <div className="mb-8 p-4 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-2xl">
-                <p className="font-bold flex items-center gap-2">
-                  <Sparkles className="w-5 h-5"/>
-                  核可資料中，有已轉採購單的品項！系統已自動幫您匯入下方的採購清單。
-                </p>
-              </div>
-            )}
-
             <div className="bg-orange-50 border-2 border-orange-100 rounded-2xl p-6 mb-8">
               <h2 className="text-xl font-bold text-orange-700 mb-6 flex items-center gap-2"><Plus className="w-5 h-5"/> 新增採購單</h2>
               
@@ -450,6 +521,7 @@ export default function ManagementPage() {
                     <input type="number" placeholder="單價($)" value={procPrice} onChange={e => setProcPrice(parseInt(e.target.value))} min="0" className="w-full rounded-xl border-2 border-orange-100 px-3 py-2" />
                   </div>
                   <button onClick={handleAddProcItem} className="bg-orange-400 hover:bg-orange-500 text-white px-6 py-2 rounded-xl font-bold whitespace-nowrap h-[44px]">儲存品項</button>
+                  {editingProcSupplyId && <button onClick={() => {setEditingProcSupplyId(''); setProcCatId(''); setProcSupplyId('');}} className="bg-gray-100 text-gray-600 px-4 py-2 rounded-xl font-bold h-[44px]">取消</button>}
                 </div>
               </div>
 
@@ -458,6 +530,7 @@ export default function ManagementPage() {
                   <table className="w-full text-left">
                     <thead>
                       <tr className="text-gray-500 text-sm border-b border-orange-100">
+                        <th className="pb-2 w-10">序號</th>
                         <th className="pb-2">採買品項名稱</th>
                         <th className="pb-2">數量</th>
                         <th className="pb-2">單價</th>
@@ -467,7 +540,8 @@ export default function ManagementPage() {
                     </thead>
                     <tbody>
                       {procItems.map((item, idx) => (
-                        <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-orange-50/50">
+                        <tr key={idx} className={`border-b border-gray-50 last:border-0 hover:bg-orange-50/50 ${editingProcSupplyId === item.supplyId ? 'bg-orange-100' : ''}`}>
+                          <td className="py-3 font-medium text-gray-500">{idx + 1}</td>
                           <td className="py-3 font-bold text-gray-800">{item.name}</td>
                           <td className="py-3 text-orange-500 font-bold">x {item.quantity}</td>
                           <td className="py-3 text-gray-600">${item.unitPrice}</td>
@@ -480,8 +554,11 @@ export default function ManagementPage() {
                       ))}
                     </tbody>
                   </table>
-                  <div className="text-right pt-4 text-2xl font-extrabold text-orange-600">
-                    採購總金額: ${procItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0)}
+                  <div className="flex justify-between items-end pt-4">
+                    <div className="text-gray-500 font-medium">總採買品項數: {procItems.length} 項</div>
+                    <div className="text-2xl font-extrabold text-orange-600">
+                      採購總金額: ${procItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0)}
+                    </div>
                   </div>
                 </div>
               )}
@@ -491,41 +568,101 @@ export default function ManagementPage() {
               </button>
             </div>
 
-            <h2 className="text-xl font-bold text-gray-800 mb-4">歷史採購紀錄</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {procurements.map(proc => (
-                <div key={proc.id} className="bg-white border-2 border-sky-100 rounded-2xl p-5 shadow-sm">
-                  <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-3">
-                    <div>
-                      <div className="font-bold text-gray-800 text-lg mb-1">{proc.id}</div>
-                      <div className="text-sm text-gray-500">{proc.location} | {proc.date}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xl font-extrabold text-orange-500">${proc.totalAmount}</div>
-                      {proc.isRestocked ? (
-                        <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-lg font-bold">已入庫</span>
-                      ) : (
-                        <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-1 rounded-lg font-bold">待入庫</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-sm text-gray-600 mb-4">
-                    {proc.items.map(i => `${i.name} (x${i.quantity})`).join('、')}
-                  </div>
-                  <div className="flex gap-2">
-                    {!proc.isRestocked && (
-                      <button onClick={() => handleRestock(proc)} className="flex-1 bg-green-400 hover:bg-green-500 text-white py-2 rounded-xl font-bold flex justify-center items-center gap-1">
-                        <Package className="w-4 h-4" /> 確認入庫
-                      </button>
-                    )}
-                    <button onClick={() => handleDeleteProcurement(proc.id)} className="px-4 bg-gray-100 hover:bg-red-100 hover:text-red-500 text-gray-500 py-2 rounded-xl font-bold flex justify-center items-center">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {procurements.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">沒有歷史採購紀錄</p>}
+            <h2 className="text-xl font-bold text-gray-800 mb-4 border-b-2 border-gray-100 pb-2 flex items-center justify-between">
+              採購清單
+            </h2>
+
+            <div className="flex flex-col md:flex-row gap-4 mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100 items-center">
+               <span className="font-bold text-gray-600">日期查詢：</span>
+               <input type="date" value={procStartDate} onChange={e => setProcStartDate(e.target.value)} className="rounded-xl border border-gray-200 px-3 py-1 outline-none"/>
+               <span className="text-gray-400">至</span>
+               <input type="date" value={procEndDate} onChange={e => setProcEndDate(e.target.value)} className="rounded-xl border border-gray-200 px-3 py-1 outline-none"/>
+               <div className="flex-1"></div>
+               <button onClick={() => openRestockModal()} disabled={selectedProcs.length === 0} className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl font-bold disabled:opacity-50 flex items-center gap-2">
+                 <Package className="w-4 h-4"/> 批次入庫 ({selectedProcs.length})
+               </button>
             </div>
+
+            <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-sky-100">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-sky-50 text-sky-700">
+                    <th className="pb-3 pl-4 pt-3 rounded-tl-xl w-16">
+                      <div className="flex flex-col gap-1 items-start">
+                        <button onClick={() => setSelectedProcs(paginatedProcs.filter(p => !p.isRestocked).map(p => p.id))} className="text-xs bg-sky-200 text-sky-700 px-1 rounded">全選</button>
+                        <input 
+                          type="checkbox" 
+                          onChange={e => {
+                            if (e.target.checked) setSelectedProcs(paginatedProcs.filter(p => !p.isRestocked).map(p => p.id));
+                            else setSelectedProcs(selectedProcs.filter(id => !paginatedProcs.find(p => p.id === id)));
+                          }}
+                          checked={paginatedProcs.length > 0 && paginatedProcs.filter(p => !p.isRestocked).every(p => selectedProcs.includes(p.id))}
+                          className="w-4 h-4 ml-1 mt-1"
+                        />
+                      </div>
+                    </th>
+                    <th className="pb-3 pt-3 font-bold">單號</th>
+                    <th className="pb-3 pt-3 font-bold">採買日期</th>
+                    <th className="pb-3 pt-3 font-bold">地點</th>
+                    <th className="pb-3 pt-3 font-bold">金額</th>
+                    <th className="pb-3 pt-3 font-bold">狀態</th>
+                    <th className="pb-3 pt-3 pr-4 text-right rounded-tr-xl font-bold">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedProcs.map(proc => (
+                    <tr key={proc.id} className="border-b border-gray-50 hover:bg-sky-50/50">
+                      <td className="py-3 pl-5">
+                         {!proc.isRestocked && (
+                           <input 
+                            type="checkbox"
+                            checked={selectedProcs.includes(proc.id)}
+                            onChange={e => {
+                              if(e.target.checked) setSelectedProcs([...selectedProcs, proc.id]);
+                              else setSelectedProcs(selectedProcs.filter(id => id !== proc.id));
+                            }}
+                            className="w-4 h-4"
+                          />
+                         )}
+                      </td>
+                      <td className="py-3 font-bold text-gray-800">{proc.id}</td>
+                      <td className="py-3 text-gray-600">{proc.date}</td>
+                      <td className="py-3 font-medium">{proc.location}</td>
+                      <td className="py-3 font-bold text-orange-500">${proc.totalAmount}</td>
+                      <td className="py-3">
+                        {proc.isRestocked ? (
+                          <span className="bg-green-100 text-green-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">已入庫 ({proc.restockDate})</span>
+                        ) : (
+                          <span className="bg-yellow-100 text-yellow-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">待入庫</span>
+                        )}
+                      </td>
+                      <td className="py-3 text-right pr-4">
+                        <div className="flex justify-end gap-2">
+                          {!proc.isRestocked && (
+                            <>
+                              <button onClick={() => openRestockModal(proc)} className="bg-green-400 hover:bg-green-500 text-white p-2 rounded-xl text-sm" title="確認入庫">
+                                <Package className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                          <button onClick={() => handleDeleteProcurement(proc.id)} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-xl text-sm" title="刪除">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {paginatedProcs.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-gray-400">目前沒有符合的採購單</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            {totalProcPages > 1 && (
+              <div className="flex justify-center items-center gap-4 mt-6">
+                <button disabled={procPage === 1} onClick={() => setProcPage(p => p - 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50 font-bold">上一頁</button>
+                <span className="text-gray-600 font-bold">{procPage} / {totalProcPages}</span>
+                <button disabled={procPage === totalProcPages} onClick={() => setProcPage(p => p + 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50 font-bold">下一頁</button>
+              </div>
+            )}
           </div>
         )}
 

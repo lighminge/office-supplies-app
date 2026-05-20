@@ -13,6 +13,7 @@ const schema = z.object({
   categoryId: z.string().min(1, '請選擇分類'),
   quantity: z.number({ invalid_type_error: '數量必須是數字唷' }).min(0, '數量不能是負數啦'),
   minQuantity: z.number({ invalid_type_error: '安全庫存必須是數字' }).min(0, '不能是負數'),
+  price: z.number({ invalid_type_error: '單價必須是數字' }).min(0, '不能是負數'),
   iconId: z.string().min(1, '請選一個可愛的圖示'),
 });
 
@@ -34,6 +35,7 @@ export default function ItemForm({ initialData, categories, icons, onSubmit, onC
       categoryId: categories.length > 0 ? categories[0].id : '',
       quantity: 0,
       minQuantity: 0,
+      price: 0,
       iconId: '',
     }
   });
@@ -45,6 +47,7 @@ export default function ItemForm({ initialData, categories, icons, onSubmit, onC
         categoryId: initialData.categoryId,
         quantity: initialData.quantity,
         minQuantity: initialData.minQuantity,
+        price: initialData.price || 0,
         iconId: initialData.iconId,
       });
     } else {
@@ -53,6 +56,7 @@ export default function ItemForm({ initialData, categories, icons, onSubmit, onC
         categoryId: categories.length > 0 ? categories[0].id : '',
         quantity: 0,
         minQuantity: 0,
+        price: 0,
         iconId: '',
       });
     }
@@ -61,7 +65,6 @@ export default function ItemForm({ initialData, categories, icons, onSubmit, onC
   const selectedCategoryId = watch('categoryId');
   const filteredIcons = icons.filter(i => i.categoryId === selectedCategoryId);
 
-  // When category changes, reset selected icon if it's not valid for the new category
   useEffect(() => {
     if (filteredIcons.length > 0) {
       const currentIconId = watch('iconId');
@@ -123,7 +126,17 @@ export default function ItemForm({ initialData, categories, icons, onSubmit, onC
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">單價 ($)</label>
+          <input 
+            type="number" 
+            {...register('price', { valueAsNumber: true })} 
+            className={cn("w-full rounded-2xl border-2 px-4 py-2 focus:outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200", errors.price ? "border-red-300" : "border-sky-100")}
+          />
+          {errors.price && <p className="text-red-400 text-xs mt-1 ml-2">{errors.price.message}</p>}
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">目前數量</label>
           <input 
