@@ -2,22 +2,26 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileText, Plus, Trash2, Printer, Edit3, ClipboardList, PenTool, Save } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Trash2, Printer, Edit3 } from 'lucide-react';
 import { db, getNextSerial } from '@/lib/firebase';
-import { collection, getDocs, addDoc, serverTimestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { OfficeSupply, Department, Personnel, RequestItem, Category, RequestRecord } from '@/types';
+import { collection, getDocs, setDoc, serverTimestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { OfficeSupply, Department, Personnel, RequestItem, Category, RequestRecord, AppIcon } from '@/types';
 import { useReactToPrint } from 'react-to-print';
 import ConfirmModal from '@/components/ConfirmModal';
+import * as Icons from 'lucide-react';
+import React from 'react';
 
 export default function RequestPage() {
   const [supplies, setSupplies] = useState<OfficeSupply[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [personnel, setPersonnel] = useState<Personnel[]>([]);
+  const [icons, setIcons] = useState<AppIcon[]>([]);
   const [allRequests, setAllRequests] = useState<RequestRecord[]>([]);
   
   const [selectedDeptId, setSelectedDeptId] = useState('');
   const [selectedPersonId, setSelectedPersonId] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
   
   // Tab state
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
@@ -27,7 +31,6 @@ export default function RequestPage() {
   const itemsPerPage = 5;
 
   // Create Request State
-  const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [selectedItems, setSelectedItems] = useState<RequestItem[]>([]);
   const [currentItemId, setCurrentItemId] = useState('');
   const [currentQty, setCurrentQty] = useState(1);
@@ -40,6 +43,7 @@ export default function RequestPage() {
 
   // Print references
   const printRef = useRef<HTMLDivElement>(null);
+  const printPastRef = useRef<HTMLDivElement>(null);
   const [printingRequest, setPrintingRequest] = useState<RequestRecord | null>(null);
 
   // Edit Request State
@@ -51,18 +55,20 @@ export default function RequestPage() {
 
   const fetchData = async () => {
     try {
-      const [catSnap, supSnap, deptSnap, perSnap, reqSnap] = await Promise.all([
+      const [catSnap, supSnap, deptSnap, perSnap, reqSnap, iconSnap] = await Promise.all([
         getDocs(collection(db, 'categories')),
         getDocs(collection(db, 'supplies')),
         getDocs(collection(db, 'departments')),
         getDocs(collection(db, 'personnel')),
-        getDocs(collection(db, 'requests'))
+        getDocs(collection(db, 'requests')),
+        getDocs(collection(db, 'icons'))
       ]);
       setCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
       setSupplies(supSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfficeSupply)));
       setDepartments(deptSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Department)));
       setPersonnel(perSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Personnel)));
       setAllRequests(reqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestRecord)));
+      setIcons(iconSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppIcon)));
     } catch (error) { console.error('Failed to fetch data', error); }
   };
 
@@ -72,6 +78,13 @@ export default function RequestPage() {
   useEffect(() => {
     setListPage(1);
   }, [selectedPersonId]);
+
+  const renderIcon = (supplyId: string) => {
+    const supply = supplies.find(s => s.id === supplyId);
+    const iconData = icons.find(i => i.id === supply?.iconId);
+    const IconComp = iconData ? (Icons as any)[iconData.name] : Icons.HelpCircle;
+    return <IconComp className="w-5 h-5 text-sky-500 flex-shrink-0" />;
+  };
 
   // Create Flow
   const handleAddItem = () => {
@@ -94,7 +107,7 @@ export default function RequestPage() {
   // Edit Flow
   const handleEditReq = (req: RequestRecord) => {
     setEditingReq(req);
-    setEditItems([...req.items]);
+    setEditItems(req.items.map(item => ({ ...item }))); // Deep copy
   };
   const handleAddEditItem = () => {
     if (!editItemId || editQty <= 0) return;
@@ -114,7 +127,12 @@ export default function RequestPage() {
   const handleSaveEdit = async () => {
     if (!editingReq) return;
     try {
-      await updateDoc(doc(db, 'requests', editingReq.id), { items: editItems });
+      const cleanItems = editItems.map(item => ({
+        supplyId: item.supplyId,
+        name: item.name,
+        quantity: item.quantity || 1
+      }));
+      await updateDoc(doc(db, 'requests', editingReq.id), { items: cleanItems });
       setEditingReq(null);
       alert('修改成功！');
       fetchData();
@@ -135,6 +153,19 @@ export default function RequestPage() {
     }, 100);
   };
 
+  const handlePrintPastRequest = useReactToPrint({ 
+    content: () => printPastRef.current, 
+    documentTitle: `用品申請單`,
+    onAfterPrint: () => setPrintingRequest(null) 
+  });
+
+  const triggerPrintPastRequest = (req: RequestRecord) => {
+    setPrintingRequest(req);
+    setTimeout(() => {
+      handlePrintPastRequest();
+    }, 100);
+  };
+
   // Submit Logic
   const handleSubmit = async () => {
     if (!selectedDeptId || !selectedPersonId || selectedItems.length === 0) {
@@ -146,27 +177,31 @@ export default function RequestPage() {
       const dept = departments.find(d => d.id === selectedDeptId);
       const person = personnel.find(p => p.id === selectedPersonId);
       
+      const cleanItems = selectedItems.map(item => ({
+        supplyId: item.supplyId,
+        name: item.name,
+        quantity: item.quantity || 1
+      }));
+
       const newReqData = {
         id: serial,
         departmentId: selectedDeptId,
         departmentName: dept?.name || '未知單位',
         applicantId: selectedPersonId,
         applicantName: person?.name || '未知人員',
-        items: selectedItems,
+        items: cleanItems,
         status: 'pending' as const,
         createdAt: serverTimestamp(),
       };
       
-      const docRef = await addDoc(collection(db, 'requests'), newReqData);
+      await setDoc(doc(db, 'requests', serial), newReqData);
       alert('申請單已成功送出！✨ 即將為您產生列印檔...'); 
       
-      // Fetch the created doc immediately to get real timestamp or just use local date for print
-      const createdReq = { ...newReqData, docId: docRef.id, createdAt: { toDate: () => new Date() } } as unknown as RequestRecord;
+      const createdReq = { ...newReqData, createdAt: { toDate: () => new Date() } } as unknown as RequestRecord;
       triggerPrintRequest(createdReq);
 
-      // Do NOT clear Dept and Person
       setSelectedCategoryId(''); setSelectedItems([]); fetchData();
-      setActiveTab('list'); // Switch back to list view
+      setActiveTab('list'); 
     } catch (error: any) { alert('申請單送出失敗：' + error.message); }
     finally { setIsSubmitting(false); setConfirmOpen(false); }
   };
@@ -202,6 +237,7 @@ export default function RequestPage() {
               <label className="block text-sm font-bold text-gray-600 mb-2">已申請的物品</label>
               {editItems.map((item, i) => (
                 <div key={i} className="flex gap-2 mb-3 items-center">
+                  {renderIcon(item.supplyId)}
                   <input className="flex-1 p-3 border-2 border-gray-100 bg-gray-50 rounded-xl text-gray-700 font-medium" value={item.name} disabled />
                   <span className="text-gray-500 font-bold">x</span>
                   <input className="w-24 p-3 border-2 border-sky-100 focus:border-sky-300 focus:ring-2 focus:ring-sky-200 outline-none rounded-xl text-center font-bold text-sky-600" type="number" min="1" value={item.quantity} onChange={e => {
@@ -222,20 +258,20 @@ export default function RequestPage() {
                   <option value="">-- 先選擇類別 --</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <select value={editItemId} onChange={e => setEditItemId(e.target.value)} disabled={!editCategoryId} className="flex-1 p-2 border-2 border-sky-100 rounded-xl outline-none disabled:opacity-50">
                     <option value="">-- 再選擇物品 --</option>
                     {editFilteredSupplies.map(s => <option key={s.id} value={s.id}>{s.name} (庫存:{s.quantity})</option>)}
                   </select>
-                  <input type="number" min="1" value={editQty} onChange={e => setEditQty(parseInt(e.target.value))} className="w-20 p-2 border-2 border-sky-100 rounded-xl text-center outline-none" />
-                  <button onClick={handleAddEditItem} className="bg-sky-400 text-white px-4 rounded-xl font-bold hover:bg-sky-500">加入</button>
+                  <input type="number" min="1" value={editQty} onChange={e => setEditQty(parseInt(e.target.value) || 1)} className="w-20 p-2 border-2 border-sky-100 rounded-xl text-center outline-none" />
+                  <button onClick={handleAddEditItem} className="bg-sky-400 text-white px-4 py-2 rounded-xl font-bold hover:bg-sky-500">加入</button>
                 </div>
               </div>
             </div>
 
             <div className="flex gap-3">
               <button onClick={() => setEditingReq(null)} className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold rounded-2xl">取消</button>
-              <button onClick={handleSaveEdit} disabled={editItems.length === 0} className="flex-1 px-4 py-3 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50"><Save className="w-5 h-5"/> 儲存修改</button>
+              <button onClick={handleSaveEdit} disabled={editItems.length === 0} className="flex-1 px-4 py-3 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50">儲存修改</button>
             </div>
           </div>
         </div>
@@ -279,7 +315,7 @@ export default function RequestPage() {
                 <input 
                   type="number" 
                   value={currentQty}
-                  onChange={e => setCurrentQty(parseInt(e.target.value))}
+                  onChange={e => setCurrentQty(parseInt(e.target.value) || 1)}
                   min="1"
                   className="w-full rounded-xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 text-center"
                 />
@@ -327,10 +363,10 @@ export default function RequestPage() {
           <div>
             <div className="flex gap-4 mb-6 border-b-2 border-sky-100 pb-2">
               <button onClick={() => setActiveTab('list')} className={`px-6 py-2 font-bold text-lg rounded-t-2xl transition-colors ${activeTab === 'list' ? 'bg-sky-100 text-sky-600' : 'text-gray-500 hover:text-sky-500'}`}>
-                <div className="flex items-center gap-2"><ClipboardList className="w-5 h-5"/> 未領用單據 ({userUnfinishedRequests.length})</div>
+                <div className="flex items-center gap-2">未領用單據 ({userUnfinishedRequests.length})</div>
               </button>
               <button onClick={() => setActiveTab('create')} className={`px-6 py-2 font-bold text-lg rounded-t-2xl transition-colors ${activeTab === 'create' ? 'bg-sky-100 text-sky-600' : 'text-gray-500 hover:text-sky-500'}`}>
-                <div className="flex items-center gap-2"><PenTool className="w-5 h-5"/> 登打申請單</div>
+                <div className="flex items-center gap-2">登打申請單</div>
               </button>
             </div>
 
@@ -357,7 +393,8 @@ export default function RequestPage() {
                           <td className="py-3">
                             <ul className="space-y-1">
                               {req.items.map((item, idx) => (
-                                <li key={idx} className="text-xs">
+                                <li key={idx} className="text-xs flex items-center gap-1">
+                                  {renderIcon(item.supplyId)}
                                   <span className="text-gray-700">{item.name}</span>
                                   <span className="text-sky-500 ml-1 font-bold">x{item.quantity}</span>
                                 </li>
@@ -381,7 +418,7 @@ export default function RequestPage() {
                                   <button onClick={() => setDeleteId(req.id)} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100" title="刪除"><Trash2 className="w-4 h-4" /></button>
                                 </>
                               )}
-                              <button onClick={() => triggerPrintRequest(req)} className="p-2 bg-sky-50 text-sky-500 rounded-lg hover:bg-sky-100" title="補列印申請單"><Printer className="w-4 h-4" /></button>
+                              <button onClick={() => triggerPrintPastRequest(req)} className="p-2 bg-sky-50 text-sky-500 rounded-lg hover:bg-sky-100" title="補列印申請單"><Printer className="w-4 h-4" /></button>
                             </div>
                           </td>
                         </tr>
@@ -410,8 +447,14 @@ export default function RequestPage() {
                 <ul className="space-y-3 mb-8">
                   {selectedItems.map(item => (
                     <li key={item.supplyId} className="flex justify-between items-center bg-white border border-sky-100 rounded-xl p-4 shadow-sm">
-                      <span className="font-medium text-gray-800">{item.name}</span>
-                      <div className="flex items-center gap-4"><span className="text-sky-600 font-bold">x {item.quantity}</span><button onClick={() => handleRemoveItem(item.supplyId)} className="text-red-400"><Trash2 className="w-5 h-5" /></button></div>
+                      <div className="flex items-center gap-2">
+                        {renderIcon(item.supplyId)}
+                        <span className="font-medium text-gray-800">{item.name}</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-sky-600 font-bold">x {item.quantity}</span>
+                        <button onClick={() => handleRemoveItem(item.supplyId)} className="text-red-400"><Trash2 className="w-5 h-5" /></button>
+                      </div>
                     </li>
                   ))}
                   {selectedItems.length === 0 && <li className="text-center py-10 bg-sky-50 rounded-xl border-2 border-dashed border-sky-100 text-gray-400">目前還沒有加入任何物品喔！</li>}
