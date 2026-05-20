@@ -45,7 +45,7 @@ export interface RequestRecord {
   applicantId: string;
   applicantName: string; // Cached
   items: RequestItem[];
-  status: 'pending' | 'approved' | 'purchasing' | 'completed'; // 新增：狀態
+  status: 'pending' | 'approved' | 'purchasing' | 'restocked' | 'completed'; // 新增：狀態
   createdAt: any;
 }
 

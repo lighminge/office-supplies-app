@@ -209,12 +209,13 @@ export default function ManagementPage() {
       setProcQty(item.quantity);
       setProcPrice(item.unitPrice);
       setEditingProcSupplyId(item.supplyId);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
-  const handleRemoveProcItem = (id: string) => {
-    setProcItems(procItems.filter(i => i.supplyId !== id));
-  };
+  const handleRemoveProcItem = (id: string) => requestAction('確定要從採購清單中移除這個品項嗎？', async () => {
+    setProcItems(prev => prev.filter(i => i.supplyId !== id));
+  }, '確定刪除');
 
   const handleSaveProcurement = async () => {
     if (!procDate || !procLocation || procItems.length === 0) return alert('請填寫日期、地點並至少加入一項物品！');
@@ -265,7 +266,14 @@ export default function ManagementPage() {
         }
         await updateDoc(doc(db, 'procurements', proc.id), { isRestocked: true, restockDate: date });
       }
-      alert('入庫成功！');
+
+      // Update purchasing requests to restocked
+      const reqSnap = await getDocs(collection(db, 'requests'));
+      const purchasingReqs = reqSnap.docs.filter(doc => doc.data().status === 'purchasing');
+      for (const r of purchasingReqs) {
+        await updateDoc(doc(db, 'requests', r.id), { status: 'restocked' });
+      }
+
       fetchData();
     } catch (e: any) { alert('入庫失敗：' + e.message); }
   };
@@ -299,6 +307,7 @@ export default function ManagementPage() {
     setProcLocation(proc.location);
     setProcItems(proc.items);
     setEditingHistoryProcId(proc.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDeleteProcurement = (id: string) => requestAction('確定要刪除這筆採購單嗎？', async () => {
