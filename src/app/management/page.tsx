@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Package, Sparkles, Plus, Edit3, Trash2, Tag, Image as ImageIcon, ShoppingCart } from 'lucide-react';
-import { db } from '@/lib/firebase';
+import { db, getNextSerial } from '@/lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { OfficeSupply, Category, AppIcon, LUCIDE_ICONS_LIST, LUCIDE_ICONS_MAP, RequestRecord, ProcurementRecord, ProcurementItem } from '@/types';
 import ItemForm from '@/components/ItemForm';
@@ -23,9 +23,11 @@ export default function ManagementPage() {
   const [procurements, setProcurements] = useState<ProcurementRecord[]>([]);
   const [purchasingRequests, setPurchasingRequests] = useState<RequestRecord[]>([]);
 
-  // Filters
+  // Filters & Pagination
   const [supplyCategoryFilter, setSupplyCategoryFilter] = useState('');
   const [iconCategoryFilter, setIconCategoryFilter] = useState('');
+  const [supplyPage, setSupplyPage] = useState(1);
+  const itemsPerPage = 12;
 
   // Modals
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -117,6 +119,9 @@ export default function ManagementPage() {
   });
 
   const filteredSupplies = supplyCategoryFilter ? supplies.filter(s => s.categoryId === supplyCategoryFilter) : supplies;
+  const totalCategoryQty = filteredSupplies.reduce((sum, s) => sum + s.quantity, 0);
+  const paginatedSupplies = filteredSupplies.slice((supplyPage - 1) * itemsPerPage, supplyPage * itemsPerPage);
+  const totalSupplyPages = Math.ceil(filteredSupplies.length / itemsPerPage) || 1;
 
   // --- Procurement ---
   const [procDate, setProcDate] = useState('');
@@ -164,6 +169,17 @@ export default function ManagementPage() {
     setProcPrice(0);
   };
 
+  const handleEditProcItem = (item: ProcurementItem) => {
+    const supply = supplies.find(s => s.id === item.supplyId);
+    if (supply) {
+      setProcCatId(supply.categoryId);
+      setProcSupplyId(item.supplyId);
+      setProcQty(item.quantity);
+      setProcPrice(item.unitPrice);
+      setProcItems(procItems.filter(i => i.supplyId !== item.supplyId));
+    }
+  };
+
   const handleRemoveProcItem = (id: string) => requestDelete('確定要從採購清單中移除這個品項嗎？', async () => {
     setProcItems(procItems.filter(i => i.supplyId !== id));
   });
@@ -172,7 +188,9 @@ export default function ManagementPage() {
     if (!procDate || !procLocation || procItems.length === 0) return alert('請填寫日期、地點並至少加入一項物品！');
     const totalAmount = procItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
     try {
+      const serial = await getNextSerial('PROC');
       await addDoc(collection(db, 'procurements'), {
+        id: serial,
         date: procDate,
         location: procLocation,
         items: procItems,
@@ -332,16 +350,21 @@ export default function ManagementPage() {
         {/* Supplies Tab */}
         {activeTab === 'supplies' && (
           <div>
-            <div className="mb-6 flex items-center gap-2 border-b-2 border-dashed border-sky-100 pb-6">
-              <span className="font-bold text-gray-600">依類別篩選：</span>
-              <select 
-                value={supplyCategoryFilter}
-                onChange={e => setSupplyCategoryFilter(e.target.value)}
-                className="rounded-xl border-2 border-sky-100 px-4 py-1 focus:outline-none focus:border-sky-300"
-              >
-                <option value="">全部類別</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+            <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-dashed border-sky-100 pb-6">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-gray-600">依類別篩選：</span>
+                <select 
+                  value={supplyCategoryFilter}
+                  onChange={e => { setSupplyCategoryFilter(e.target.value); setSupplyPage(1); }}
+                  className="rounded-xl border-2 border-sky-100 px-4 py-1 focus:outline-none focus:border-sky-300"
+                >
+                  <option value="">全部類別</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="bg-sky-50 px-4 py-2 rounded-xl text-sky-600 font-bold border border-sky-100">
+                目前類別總庫存數量：{totalCategoryQty}
+              </div>
             </div>
 
             {categories.length === 0 || icons.length === 0 ? (
@@ -349,18 +372,27 @@ export default function ManagementPage() {
                 請先新增一些「物品類別」與「插圖」後，再來新增物品喔！
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredSupplies.map(item => (
-                  <ItemCard 
-                    key={item.id} 
-                    item={item} 
-                    categories={categories}
-                    icons={icons}
-                    onEdit={(item) => { setEditingSupply(item); setIsSupplyFormOpen(true); }}
-                    onDelete={handleDeleteSupply}
-                  />
-                ))}
-                {filteredSupplies.length === 0 && <p className="col-span-full text-center text-gray-400 py-10">目前沒有符合條件的物品喔</p>}
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {paginatedSupplies.map(item => (
+                    <ItemCard 
+                      key={item.id} 
+                      item={item} 
+                      categories={categories}
+                      icons={icons}
+                      onEdit={(item) => { setEditingSupply(item); setIsSupplyFormOpen(true); }}
+                      onDelete={handleDeleteSupply}
+                    />
+                  ))}
+                  {paginatedSupplies.length === 0 && <p className="col-span-full text-center text-gray-400 py-10">目前沒有符合條件的物品喔</p>}
+                </div>
+                {totalSupplyPages > 1 && (
+                  <div className="flex justify-center items-center gap-4 mt-8">
+                    <button disabled={supplyPage === 1} onClick={() => setSupplyPage(p => p - 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50 font-bold">上一頁</button>
+                    <span className="text-gray-600 font-bold">{supplyPage} / {totalSupplyPages}</span>
+                    <button disabled={supplyPage === totalSupplyPages} onClick={() => setSupplyPage(p => p + 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50 font-bold">下一頁</button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -369,45 +401,14 @@ export default function ManagementPage() {
         {/* Procurement Tab */}
         {activeTab === 'procurement' && (
           <div>
-            <div className="mb-8">
-              <h2 className="text-xl font-bold text-gray-800 mb-4 border-b-2 border-gray-100 pb-2">已轉採購單的申請資料 (清單)</h2>
-              {purchasingRequests.length === 0 ? (
-                <p className="text-gray-400 bg-gray-50 rounded-xl p-4 text-center">目前沒有等待採買的核可申請單喔</p>
-              ) : (
-                <div className="overflow-x-auto bg-white rounded-2xl border border-sky-100 shadow-sm">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-sky-50 text-sky-700">
-                        <th className="py-3 px-4 font-bold rounded-tl-2xl">申請單位</th>
-                        <th className="py-3 px-4 font-bold">申請人員</th>
-                        <th className="py-3 px-4 font-bold">待採買物品</th>
-                        <th className="py-3 px-4 font-bold rounded-tr-2xl text-right">申請日期</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {purchasingRequests.map(req => (
-                        <tr key={req.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
-                          <td className="py-3 px-4 text-gray-800 font-medium">{req.departmentName}</td>
-                          <td className="py-3 px-4 text-gray-600">{req.applicantName}</td>
-                          <td className="py-3 px-4">
-                            <div className="flex flex-wrap gap-1">
-                              {req.items.map((item, idx) => (
-                                <span key={idx} className="bg-sky-100 text-sky-700 text-xs px-2 py-1 rounded-md font-medium border border-sky-200">
-                                  {item.name} <span className="font-bold ml-1">x{item.quantity}</span>
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-right text-gray-500 text-sm">
-                            {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('zh-TW') : 'N/A'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            {purchasingRequests.length > 0 && (
+              <div className="mb-8 p-4 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-2xl">
+                <p className="font-bold flex items-center gap-2">
+                  <Sparkles className="w-5 h-5"/>
+                  核可資料中，有已轉採購單的品項！系統已自動幫您匯入下方的採購清單。
+                </p>
+              </div>
+            )}
 
             <div className="bg-orange-50 border-2 border-orange-100 rounded-2xl p-6 mb-8">
               <h2 className="text-xl font-bold text-orange-700 mb-6 flex items-center gap-2"><Plus className="w-5 h-5"/> 新增採購單</h2>
@@ -424,7 +425,7 @@ export default function ManagementPage() {
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-orange-100 mb-6">
-                <h3 className="font-bold text-gray-700 mb-3 text-sm">加入採買品項</h3>
+                <h3 className="font-bold text-gray-700 mb-3 text-sm">加入或編輯採買品項</h3>
                 <div className="flex flex-col md:flex-row gap-2 items-end">
                   <div className="flex-1">
                     <label className="block text-xs font-medium text-gray-500 mb-1">物品類別</label>
@@ -472,6 +473,7 @@ export default function ManagementPage() {
                           <td className="py-3 text-gray-600">${item.unitPrice}</td>
                           <td className="py-3 font-bold text-gray-800">${item.quantity * item.unitPrice}</td>
                           <td className="py-3 text-right">
+                            <button onClick={() => handleEditProcItem(item)} className="p-2 text-sky-500 hover:bg-sky-100 rounded-lg mr-1"><Edit3 className="w-4 h-4"/></button>
                             <button onClick={() => handleRemoveProcItem(item.supplyId)} className="p-2 text-red-400 hover:bg-red-100 hover:text-red-600 rounded-lg"><Trash2 className="w-4 h-4"/></button>
                           </td>
                         </tr>
@@ -495,8 +497,8 @@ export default function ManagementPage() {
                 <div key={proc.id} className="bg-white border-2 border-sky-100 rounded-2xl p-5 shadow-sm">
                   <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-3">
                     <div>
-                      <div className="font-bold text-gray-800 text-lg mb-1">{proc.location}</div>
-                      <div className="text-sm text-gray-500">{proc.date}</div>
+                      <div className="font-bold text-gray-800 text-lg mb-1">{proc.id}</div>
+                      <div className="text-sm text-gray-500">{proc.location} | {proc.date}</div>
                     </div>
                     <div className="text-right">
                       <div className="text-xl font-extrabold text-orange-500">${proc.totalAmount}</div>

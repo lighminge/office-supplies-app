@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileText, Plus, Trash2, Printer } from 'lucide-react';
-import { db } from '@/lib/firebase';
-import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ArrowLeft, FileText, Plus, Trash2, Printer, Edit3 } from 'lucide-react';
+import { db, getNextSerial } from '@/lib/firebase';
+import { collection, getDocs, addDoc, serverTimestamp, doc, deleteDoc } from 'firebase/firestore';
 import { OfficeSupply, Department, Personnel, RequestItem, Category, RequestRecord } from '@/types';
 import { useReactToPrint } from 'react-to-print';
 import ConfirmModal from '@/components/ConfirmModal';
@@ -14,7 +14,7 @@ export default function RequestPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [personnel, setPersonnel] = useState<Personnel[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<RequestRecord[]>([]);
+  const [allRequests, setAllRequests] = useState<RequestRecord[]>([]);
   
   const [selectedDeptId, setSelectedDeptId] = useState('');
   const [selectedPersonId, setSelectedPersonId] = useState('');
@@ -27,36 +27,32 @@ export default function RequestPage() {
   
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  // Print references
   const printRef = useRef<HTMLDivElement>(null);
   const printPastRef = useRef<HTMLDivElement>(null);
   const [printingRequest, setPrintingRequest] = useState<RequestRecord | null>(null);
 
   const fetchData = async () => {
     try {
-      const catSnap = await getDocs(collection(db, 'categories'));
+      const [catSnap, supSnap, deptSnap, perSnap, reqSnap] = await Promise.all([
+        getDocs(collection(db, 'categories')),
+        getDocs(collection(db, 'supplies')),
+        getDocs(collection(db, 'departments')),
+        getDocs(collection(db, 'personnel')),
+        getDocs(collection(db, 'requests'))
+      ]);
       setCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
-
-      const supSnap = await getDocs(collection(db, 'supplies'));
       setSupplies(supSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfficeSupply)));
-      
-      const deptSnap = await getDocs(collection(db, 'departments'));
       setDepartments(deptSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Department)));
-      
-      const perSnap = await getDocs(collection(db, 'personnel'));
       setPersonnel(perSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Personnel)));
-      
-      const reqSnap = await getDocs(collection(db, 'requests'));
-      setPendingRequests(reqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestRecord)));
+      setAllRequests(reqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestRecord)));
     } catch (error) {
       console.error('Failed to fetch data', error);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const handleAddItem = () => {
     if (!currentItemId || currentQty <= 0) return;
@@ -71,48 +67,26 @@ export default function RequestPage() {
     } else {
       setSelectedItems([...selectedItems, { supplyId: supply.id, name: supply.name, quantity: currentQty }]);
     }
-    setCurrentItemId('');
-    setCurrentQty(1);
-    setIsAddItemModalOpen(false);
+    setCurrentItemId(''); setCurrentQty(1); setIsAddItemModalOpen(false);
   };
 
-  const handleRemoveItem = (id: string) => {
-    setSelectedItems(selectedItems.filter(item => item.supplyId !== id));
-  };
+  const handleRemoveItem = (id: string) => setSelectedItems(selectedItems.filter(item => item.supplyId !== id));
 
-  const handlePrint = useReactToPrint({
-    content: () => printRef.current,
-    documentTitle: `用品申請單-${new Date().toLocaleDateString('zh-TW')}`,
-  });
+  const handlePrint = useReactToPrint({ content: () => printRef.current });
+  const handlePrintPastRequest = useReactToPrint({ content: () => printPastRef.current, onAfterPrint: () => setPrintingRequest(null) });
 
-  const handlePrintPastRequest = useReactToPrint({
-    content: () => printPastRef.current,
-    documentTitle: `用品申請單`,
-    onAfterPrint: () => setPrintingRequest(null)
-  });
-
-  const triggerPrintPastRequest = (req: RequestRecord) => {
-    setPrintingRequest(req);
-    setTimeout(() => {
-      handlePrintPastRequest();
-    }, 100);
-  };
-
-  const handleSubmitClick = () => {
+  const handleSubmit = async () => {
     if (!selectedDeptId || !selectedPersonId || selectedItems.length === 0) {
-      alert('請填寫申請單位、人員，並至少選擇一項物品！');
-      return;
+      alert('請填寫申請單位、人員，並至少選擇一項物品！'); return;
     }
-    setConfirmOpen(true);
-  };
-
-  const handleConfirmSubmit = async () => {
-    const dept = departments.find(d => d.id === selectedDeptId);
-    const person = personnel.find(p => p.id === selectedPersonId);
-    
     setIsSubmitting(true);
     try {
+      const serial = await getNextSerial('REQ');
+      const dept = departments.find(d => d.id === selectedDeptId);
+      const person = personnel.find(p => p.id === selectedPersonId);
+      
       await addDoc(collection(db, 'requests'), {
+        id: serial,
         departmentId: selectedDeptId,
         departmentName: dept?.name || '未知單位',
         applicantId: selectedPersonId,
@@ -121,27 +95,22 @@ export default function RequestPage() {
         status: 'pending',
         createdAt: serverTimestamp(),
       });
-      alert('申請單已成功送出並儲存至系統！即將為您產生列印檔... ✨');
-      handlePrint();
-      
-      // Reset form & Refresh data
-      setSelectedDeptId('');
-      setSelectedPersonId('');
-      setSelectedCategoryId('');
-      setSelectedItems([]);
-      fetchData();
-    } catch (error: any) {
-      alert('申請單送出失敗：' + error.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+      alert('申請單已成功送出！✨'); handlePrint();
+      setSelectedDeptId(''); setSelectedPersonId(''); setSelectedCategoryId(''); setSelectedItems([]); fetchData();
+    } catch (error: any) { alert('申請單送出失敗：' + error.message); }
+    finally { setIsSubmitting(false); setConfirmOpen(false); }
+  };
+
+  const handleDeleteRequest = async (id: string) => {
+    try { await deleteDoc(doc(db, 'requests', id)); fetchData(); setDeleteId(null); }
+    catch (e: any) { alert('刪除失敗'); }
   };
 
   const filteredPersonnel = personnel.filter(p => p.departmentId === selectedDeptId);
   const filteredSupplies = supplies.filter(s => selectedCategoryId ? s.categoryId === selectedCategoryId : true);
   
-  const userPendingRequests = pendingRequests.filter(r => 
-    r.applicantId === selectedPersonId && (!r.status || r.status === 'pending')
+  const userUnfinishedRequests = allRequests.filter(r => 
+    r.applicantId === selectedPersonId && r.status !== 'completed'
   ).sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
 
   return (
@@ -149,13 +118,22 @@ export default function RequestPage() {
       <ConfirmModal 
         isOpen={confirmOpen}
         title="確認送出申請"
-        message="您確定要送出這張申請單嗎？送出後將產生 PDF 檔案供您列印。"
-        onConfirm={handleConfirmSubmit}
+        message="您確定要送出這張申請單嗎？"
+        onConfirm={handleSubmit}
         onCancel={() => setConfirmOpen(false)}
         confirmText="確認"
         confirmColor="bg-sky-500 hover:bg-sky-600 shadow-sky-200"
       />
+      <ConfirmModal 
+        isOpen={!!deleteId}
+        title="確認刪除"
+        message="確定要刪除這筆申請單嗎？"
+        onConfirm={() => deleteId && handleDeleteRequest(deleteId)}
+        onCancel={() => setDeleteId(null)}
+        confirmText="確認"
+      />
 
+      {/* Add Item Modal */}
       {isAddItemModalOpen && (
         <div className="fixed inset-0 bg-sky-100/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 md:p-8 max-w-sm w-full shadow-lg border-2 border-sky-100 animate-in zoom-in-95 duration-200">
@@ -220,6 +198,7 @@ export default function RequestPage() {
       </header>
 
       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 md:p-8 shadow-sm border-2 border-sky-100 mb-8">
+        
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">申請單位</label>
@@ -246,8 +225,59 @@ export default function RequestPage() {
           </div>
         </div>
 
+        {selectedPersonId && (
+          <div className="bg-sky-50/50 rounded-3xl p-6 border-2 border-sky-100 mb-8">
+            <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              該申請人未結案的單據 ({userUnfinishedRequests.length})
+            </h3>
+            {userUnfinishedRequests.length === 0 ? (
+              <p className="text-gray-400 py-4">目前沒有未結案的單據喔！</p>
+            ) : (
+              <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-sky-100">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-sky-50 text-sky-700">
+                      <th className="pb-3 pl-4 pt-3 rounded-tl-xl font-bold">申請單號</th>
+                      <th className="pb-3 pt-3 font-bold">申請日期</th>
+                      <th className="pb-3 pt-3 font-bold">狀態</th>
+                      <th className="pb-3 pt-3 pr-4 text-right rounded-tr-xl font-bold">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {userUnfinishedRequests.map(req => (
+                      <tr key={req.id} className="border-b border-gray-50 hover:bg-sky-50/50">
+                        <td className="py-3 pl-4 font-bold text-gray-800">{req.id}</td>
+                        <td className="py-3 text-gray-600">{req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('zh-TW') : 'N/A'}</td>
+                        <td className="py-3">
+                          {req.status === 'approved' ? (
+                            <span className="bg-green-100 text-green-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">已核可</span>
+                          ) : req.status === 'purchasing' ? (
+                            <span className="bg-orange-100 text-orange-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">採購中</span>
+                          ) : (
+                            <span className="bg-yellow-100 text-yellow-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">未核可</span>
+                          )}
+                        </td>
+                        <td className="py-3 text-right pr-4">
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => { setPrintingRequest(req); setTimeout(handlePrintPastRequest, 100); }} className="p-2 bg-blue-50 text-blue-500 rounded-lg hover:bg-blue-100" title="補列印申請單">
+                              <Printer className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setDeleteId(req.id)} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100" title="刪除申請單">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-4 mt-8">
-          <h3 className="font-bold text-gray-700 text-lg">已選取清單</h3>
+          <h3 className="font-bold text-gray-700 text-lg">申請物品清單</h3>
           <button 
             onClick={() => setIsAddItemModalOpen(true)}
             className="bg-sky-100 hover:bg-sky-200 text-sky-600 px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-colors"
@@ -277,63 +307,13 @@ export default function RequestPage() {
         )}
 
         <button 
-          onClick={handleSubmitClick}
-          disabled={isSubmitting || selectedItems.length === 0}
+          onClick={() => setConfirmOpen(true)}
+          disabled={isSubmitting || selectedItems.length === 0 || !selectedDeptId || !selectedPersonId}
           className="w-full bg-sky-500 hover:bg-sky-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-sky-200 transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
         >
-          <Printer className="w-6 h-6" />
           {isSubmitting ? '處理中...' : '送出申請單 ✨'}
         </button>
       </div>
-
-      {selectedPersonId && (
-        <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 shadow-sm border-2 border-sky-100">
-          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            該申請人未核可的申請單 ({userPendingRequests.length})
-          </h3>
-          {userPendingRequests.length === 0 ? (
-            <p className="text-gray-400 py-4">目前沒有未核可的申請單喔！</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-sky-100 text-sky-700">
-                    <th className="pb-2">申請日期</th>
-                    <th className="pb-2">申請物品 (數量)</th>
-                    <th className="pb-2">狀態</th>
-                    <th className="pb-2 text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {userPendingRequests.map(req => (
-                    <tr key={req.id} className="border-b border-gray-100 hover:bg-sky-50/50">
-                      <td className="py-3 text-gray-600">{req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('zh-TW') : 'N/A'}</td>
-                      <td className="py-3">
-                        <ul className="space-y-1">
-                          {req.items.map((item, idx) => (
-                            <li key={idx} className="text-sm">
-                              <span className="text-gray-700">{item.name}</span>
-                              <span className="text-sky-500 ml-2 font-bold">x{item.quantity}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </td>
-                      <td className="py-3">
-                        <span className="bg-yellow-100 text-yellow-600 px-2 py-1 rounded-lg text-xs font-bold">未核可</span>
-                      </td>
-                      <td className="py-3 text-right">
-                         <button onClick={() => triggerPrintPastRequest(req)} className="p-2 bg-blue-50 text-blue-500 rounded-lg hover:bg-blue-100" title="補列印申請單">
-                           <Printer className="w-4 h-4" />
-                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Hidden printable area for current request */}
       <div className="hidden">

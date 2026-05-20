@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ClipboardList, CheckCircle, Clock, Trash2, ShoppingCart, RotateCcw, Package, CheckSquare } from 'lucide-react';
+import { ArrowLeft, ClipboardList, CheckCircle, Clock, Trash2, ShoppingCart, RotateCcw, Package, CheckSquare, Edit3, Save } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
-import { RequestRecord, Department, Personnel } from '@/types';
+import { RequestRecord, Department, Personnel, RequestItem, OfficeSupply, Category } from '@/types';
 import ConfirmModal from '@/components/ConfirmModal';
 
 export default function WorkflowPage() {
@@ -13,6 +13,8 @@ export default function WorkflowPage() {
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [personnel, setPersonnel] = useState<Personnel[]>([]);
+  const [supplies, setSupplies] = useState<OfficeSupply[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   // Pagination states
   const [pendingPage, setPendingPage] = useState(1);
@@ -26,20 +28,30 @@ export default function WorkflowPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
   const [confirmMessage, setConfirmMessage] = useState('');
-  const [confirmBtnText, setConfirmBtnText] = useState('確定刪除');
-  const [confirmBtnColor, setConfirmBtnColor] = useState('bg-red-400 hover:bg-red-500 shadow-red-200');
+  const [confirmBtnText, setConfirmBtnText] = useState('確認');
+  const [confirmBtnColor, setConfirmBtnColor] = useState('bg-sky-500 hover:bg-sky-600 shadow-sky-200');
+
+  // Edit Request Modal
+  const [editingReq, setEditingReq] = useState<RequestRecord | null>(null);
+  const [editItems, setEditItems] = useState<RequestItem[]>([]);
+  const [newItemCatId, setNewItemCatId] = useState('');
+  const [newItemSupId, setNewItemSupId] = useState('');
+  const [newItemQty, setNewItemQty] = useState(1);
 
   const fetchData = async () => {
     try {
-      const [reqSnap, deptSnap, perSnap] = await Promise.all([
+      const [reqSnap, deptSnap, perSnap, supSnap, catSnap] = await Promise.all([
         getDocs(collection(db, 'requests')),
         getDocs(collection(db, 'departments')),
-        getDocs(collection(db, 'personnel'))
+        getDocs(collection(db, 'personnel')),
+        getDocs(collection(db, 'supplies')),
+        getDocs(collection(db, 'categories')),
       ]);
-      const rawReq = reqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestRecord));
-      setRequests(rawReq.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
+      setRequests(reqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestRecord)).sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
       setDepartments(deptSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Department)));
       setPersonnel(perSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Personnel)));
+      setSupplies(supSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfficeSupply)));
+      setCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
     } catch (error) {
       console.error('Error fetching workflow data', error);
     }
@@ -49,7 +61,7 @@ export default function WorkflowPage() {
     fetchData();
   }, []);
 
-  const requestAction = (msg: string, action: () => Promise<void>, btnText = '確定刪除', btnColor = 'bg-red-400 hover:bg-red-500 shadow-red-200') => {
+  const requestAction = (msg: string, action: () => Promise<void>, btnText = '確認', btnColor = 'bg-sky-500 hover:bg-sky-600 shadow-sky-200') => {
     setConfirmMessage(msg);
     setConfirmAction(() => action);
     setConfirmBtnText(btnText);
@@ -64,10 +76,44 @@ export default function WorkflowPage() {
     } catch (e: any) { alert('更新失敗：' + e.message); }
   };
 
+  // --- Edit Logic ---
+  const handleEditReq = (req: RequestRecord) => {
+    setEditingReq(req);
+    setEditItems([...req.items]);
+  };
+
+  const handleUpdateReq = async () => {
+    if (!editingReq) return;
+    try {
+      await updateDoc(doc(db, 'requests', editingReq.id), { items: editItems });
+      setEditingReq(null);
+      alert('修改成功！');
+      fetchData();
+    } catch (e: any) { alert('儲存失敗：' + e.message); }
+  };
+
+  const handleAddNewItemToReq = () => {
+    if (!newItemSupId || newItemQty <= 0) return;
+    const supply = supplies.find(s => s.id === newItemSupId);
+    if (!supply) return;
+    
+    const existing = editItems.find(item => item.supplyId === newItemSupId);
+    if (existing) {
+      setEditItems(editItems.map(item => 
+        item.supplyId === newItemSupId ? { ...item, quantity: item.quantity + newItemQty } : item
+      ));
+    } else {
+      setEditItems([...editItems, { supplyId: supply.id, name: supply.name, quantity: newItemQty }]);
+    }
+    setNewItemCatId('');
+    setNewItemSupId('');
+    setNewItemQty(1);
+  };
+
   // --- Pending Actions ---
   const handleApprove = (id: string) => requestAction('確定要核可這筆申請單嗎？', async () => {
     await updateRequestStatus(id, 'approved');
-  }, '確認核可', 'bg-sky-500 hover:bg-sky-600 shadow-sky-200');
+  });
 
   const handleBulkApprove = () => {
     if (selectedPending.length === 0) return alert('請先勾選要核可的申請單！');
@@ -77,7 +123,7 @@ export default function WorkflowPage() {
         setSelectedPending([]);
         fetchData();
       } catch (e: any) { alert('批次核可失敗：' + e.message); }
-    }, '確認批次核可', 'bg-sky-500 hover:bg-sky-600 shadow-sky-200');
+    });
   };
 
   // --- Approved Actions ---
@@ -98,14 +144,14 @@ export default function WorkflowPage() {
 
   const handleRevert = (id: string) => requestAction('確定將此申請單退回至「未核可」狀態嗎？', async () => {
     await updateRequestStatus(id, 'pending');
-  }, '確認', 'bg-sky-500 hover:bg-sky-600 shadow-sky-200');
+  });
 
   const handleDelete = (id: string) => requestAction('確定要取消(刪除)這筆申請單嗎？此操作無法還原。', async () => {
     try {
       await deleteDoc(doc(db, 'requests', id));
       fetchData();
     } catch (e: any) { alert('刪除失敗：' + e.message); }
-  });
+  }, '確認刪除', 'bg-red-400 hover:bg-red-500 shadow-red-200');
 
   const confirmReceiveLogic = async (id: string) => {
     const req = requests.find(r => r.id === id);
@@ -128,7 +174,7 @@ export default function WorkflowPage() {
       alert('領用成功！已扣除庫存。');
       fetchData();
     } catch (e: any) { alert('處理失敗：' + e.message); }
-  }, '確認領用', 'bg-sky-500 hover:bg-sky-600 shadow-sky-200');
+  });
 
   const handleBulkConfirmReceive = () => {
     if (selectedApproved.length === 0) return alert('請先勾選申請單！');
@@ -139,17 +185,19 @@ export default function WorkflowPage() {
         alert('批次領用成功！已扣除庫存。');
         fetchData();
       } catch (e: any) { alert('批次處理失敗：' + e.message); }
-    }, '確認批次領用', 'bg-sky-500 hover:bg-sky-600 shadow-sky-200');
+    });
   };
 
   const pendingRequests = requests.filter(r => !r.status || r.status === 'pending');
   const approvedRequests = requests.filter(r => r.status === 'approved' || r.status === 'purchasing');
 
+  const totalPendingPages = Math.ceil(pendingRequests.length / itemsPerPage) || 1;
+  const totalApprovedPages = Math.ceil(approvedRequests.length / itemsPerPage) || 1;
+
   const paginatedPending = pendingRequests.slice((pendingPage - 1) * itemsPerPage, pendingPage * itemsPerPage);
   const paginatedApproved = approvedRequests.slice((approvedPage - 1) * itemsPerPage, approvedPage * itemsPerPage);
 
-  const totalPendingPages = Math.ceil(pendingRequests.length / itemsPerPage) || 1;
-  const totalApprovedPages = Math.ceil(approvedRequests.length / itemsPerPage) || 1;
+  const editFilteredSupplies = supplies.filter(s => newItemCatId ? s.categoryId === newItemCatId : true);
 
   return (
     <main className="min-h-screen p-6 md:p-12 max-w-7xl mx-auto">
@@ -162,6 +210,55 @@ export default function WorkflowPage() {
         confirmText={confirmBtnText}
         confirmColor={confirmBtnColor}
       />
+
+      {/* Editing Modal */}
+      {editingReq && (
+        <div className="fixed inset-0 bg-sky-100/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-lg w-full border-2 border-sky-100 shadow-xl">
+            <h2 className="text-2xl font-bold mb-6 text-sky-600 flex items-center gap-2"><Edit3 className="w-6 h-6"/> 修改申請內容</h2>
+            
+            <div className="max-h-[300px] overflow-y-auto mb-6 pr-2">
+              <label className="block text-sm font-bold text-gray-600 mb-2">已申請的物品</label>
+              {editItems.map((item, i) => (
+                <div key={i} className="flex gap-2 mb-3 items-center">
+                  <input className="flex-1 p-3 border-2 border-gray-100 bg-gray-50 rounded-xl text-gray-700 font-medium" value={item.name} disabled />
+                  <span className="text-gray-500 font-bold">x</span>
+                  <input className="w-24 p-3 border-2 border-sky-100 focus:border-sky-300 focus:ring-2 focus:ring-sky-200 outline-none rounded-xl text-center font-bold text-sky-600" type="number" min="1" value={item.quantity} onChange={e => {
+                    const newItems = [...editItems];
+                    newItems[i].quantity = parseInt(e.target.value) || 1;
+                    setEditItems(newItems);
+                  }} />
+                  <button onClick={() => setEditItems(editItems.filter((_, idx) => idx !== i))} className="p-3 text-red-400 hover:bg-red-50 rounded-xl"><Trash2 className="w-5 h-5"/></button>
+                </div>
+              ))}
+              {editItems.length === 0 && <p className="text-gray-400 text-sm py-2">目前清單為空</p>}
+            </div>
+
+            <div className="bg-sky-50 p-4 rounded-2xl mb-6">
+              <label className="block text-sm font-bold text-sky-700 mb-2">追加新物品</label>
+              <div className="flex flex-col gap-2">
+                <select value={newItemCatId} onChange={e => {setNewItemCatId(e.target.value); setNewItemSupId('');}} className="w-full p-2 border-2 border-sky-100 rounded-xl outline-none">
+                  <option value="">-- 先選擇類別 --</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <div className="flex gap-2">
+                  <select value={newItemSupId} onChange={e => setNewItemSupId(e.target.value)} disabled={!newItemCatId} className="flex-1 p-2 border-2 border-sky-100 rounded-xl outline-none disabled:opacity-50">
+                    <option value="">-- 再選擇物品 --</option>
+                    {editFilteredSupplies.map(s => <option key={s.id} value={s.id}>{s.name} (庫存:{s.quantity})</option>)}
+                  </select>
+                  <input type="number" min="1" value={newItemQty} onChange={e => setNewItemQty(parseInt(e.target.value))} className="w-20 p-2 border-2 border-sky-100 rounded-xl text-center outline-none" />
+                  <button onClick={handleAddNewItemToReq} className="bg-sky-400 text-white px-4 rounded-xl font-bold hover:bg-sky-500">加入</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setEditingReq(null)} className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold rounded-2xl">取消</button>
+              <button onClick={handleUpdateReq} disabled={editItems.length === 0} className="flex-1 px-4 py-3 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50"><Save className="w-5 h-5"/> 儲存修改</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Link href="/" className="inline-flex items-center gap-2 text-sky-500 hover:text-sky-600 mb-6 font-medium bg-white px-4 py-2 rounded-full shadow-sm border border-sky-100 transition-transform hover:-translate-x-1">
         <ArrowLeft className="w-4 h-4" /> 回首頁
@@ -190,42 +287,46 @@ export default function WorkflowPage() {
           <div>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <h2 className="text-xl font-bold text-gray-800">
-                待核可的申請資料 (總共 {pendingRequests.length} 筆)
+                待核可的申請資料
               </h2>
-              <div className="flex items-center gap-3">
-                <button onClick={() => setSelectedPending(pendingRequests.map(r => r.id))} className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl">全選</button>
-                <button onClick={() => setSelectedPending([])} className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl">全取消</button>
-                <button onClick={handleBulkApprove} disabled={selectedPending.length === 0} className="px-4 py-2 text-sm bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-xl disabled:opacity-50 flex items-center gap-2">
-                  <CheckSquare className="w-4 h-4" /> 批次核可 ({selectedPending.length})
-                </button>
-              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b-2 border-sky-100 text-sky-700">
-                    <th className="pb-3 pl-2 w-10">
-                      <input 
-                        type="checkbox" 
-                        onChange={e => {
-                          if (e.target.checked) setSelectedPending(paginatedPending.map(r => r.id));
-                          else setSelectedPending(selectedPending.filter(id => !paginatedPending.find(r => r.id === id)));
-                        }}
-                        checked={paginatedPending.length > 0 && paginatedPending.every(r => selectedPending.includes(r.id))}
-                        className="w-5 h-5 rounded border-sky-300 text-sky-500 focus:ring-sky-200"
-                      />
+                    <th className="pb-3 pl-2 w-28">
+                      <div className="flex flex-col items-start gap-2">
+                        <div className="flex gap-2">
+                          <button onClick={() => setSelectedPending(paginatedPending.map(r => r.id))} className="text-xs bg-sky-100 text-sky-600 px-2 py-1 rounded hover:bg-sky-200">全選</button>
+                          <button onClick={() => setSelectedPending([])} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded hover:bg-gray-200">全取消</button>
+                        </div>
+                        <input 
+                          type="checkbox" 
+                          onChange={e => {
+                            if (e.target.checked) setSelectedPending(paginatedPending.map(r => r.id));
+                            else setSelectedPending(selectedPending.filter(id => !paginatedPending.find(r => r.id === id)));
+                          }}
+                          checked={paginatedPending.length > 0 && paginatedPending.every(r => selectedPending.includes(r.id))}
+                          className="w-5 h-5 rounded border-sky-300 text-sky-500 focus:ring-sky-200 ml-1"
+                        />
+                      </div>
                     </th>
+                    <th className="pb-3">單號</th>
                     <th className="pb-3">申請日期</th>
                     <th className="pb-3">申請單位</th>
                     <th className="pb-3">申請人員</th>
                     <th className="pb-3">申請物品</th>
-                    <th className="pb-3 text-right pr-4">操作</th>
+                    <th className="pb-3 text-right pr-4">
+                      <button onClick={handleBulkApprove} disabled={selectedPending.length === 0} className="px-4 py-2 text-sm bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-xl disabled:opacity-50 flex items-center gap-2 ml-auto">
+                        <CheckSquare className="w-4 h-4" /> 批次核可 ({selectedPending.length})
+                      </button>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedPending.map(req => (
                     <tr key={req.id} className="border-b border-gray-100 hover:bg-sky-50/50">
-                      <td className="py-4 pl-2">
+                      <td className="py-4 pl-3">
                         <input 
                           type="checkbox"
                           checked={selectedPending.includes(req.id)}
@@ -236,6 +337,7 @@ export default function WorkflowPage() {
                           className="w-5 h-5 rounded border-sky-300 text-sky-500 focus:ring-sky-200"
                         />
                       </td>
+                      <td className="py-4 font-bold text-gray-800">{req.id}</td>
                       <td className="py-4 text-gray-600">{req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('zh-TW') : 'N/A'}</td>
                       <td className="py-4 font-bold text-gray-800">{req.departmentName}</td>
                       <td className="py-4 text-gray-800">{req.applicantName}</td>
@@ -251,22 +353,28 @@ export default function WorkflowPage() {
                       </td>
                       <td className="py-4 text-right pr-4">
                         <div className="flex justify-end gap-2">
+                          <button onClick={() => handleEditReq(req)} className="p-2 bg-blue-50 text-blue-500 rounded-lg hover:bg-blue-100" title="修改內容">
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(req.id)} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100" title="刪除">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                           <button onClick={() => handleApprove(req.id)} className="bg-sky-400 hover:bg-sky-500 text-white px-4 py-2 rounded-xl font-bold text-sm">
-                            核可申請單
+                            核可
                           </button>
                         </div>
                       </td>
                     </tr>
                   ))}
-                  {paginatedPending.length === 0 && <tr><td colSpan={6} className="text-center py-10 text-gray-400">目前沒有待核可的資料</td></tr>}
+                  {paginatedPending.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-gray-400">目前沒有待核可的資料</td></tr>}
                 </tbody>
               </table>
             </div>
             {totalPendingPages > 1 && (
               <div className="flex justify-center items-center gap-4 mt-6">
-                <button disabled={pendingPage === 1} onClick={() => setPendingPage(p => p - 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50">上一頁</button>
+                <button disabled={pendingPage === 1} onClick={() => setPendingPage(p => p - 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50 font-bold">上一頁</button>
                 <span className="text-gray-600 font-bold">{pendingPage} / {totalPendingPages}</span>
-                <button disabled={pendingPage === totalPendingPages} onClick={() => setPendingPage(p => p + 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50">下一頁</button>
+                <button disabled={pendingPage === totalPendingPages} onClick={() => setPendingPage(p => p + 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50 font-bold">下一頁</button>
               </div>
             )}
           </div>
@@ -276,46 +384,52 @@ export default function WorkflowPage() {
           <div>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <h2 className="text-xl font-bold text-gray-800">
-                已核可的申請資料 (總共 {approvedRequests.length} 筆)
+                已核可的申請資料
               </h2>
-              <div className="flex flex-wrap items-center gap-3">
-                <button onClick={() => setSelectedApproved(approvedRequests.map(r => r.id))} className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl">全選</button>
-                <button onClick={() => setSelectedApproved([])} className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl">全取消</button>
-                <button onClick={handleBulkConvertToProcurement} disabled={selectedApproved.length === 0} className="px-4 py-2 text-sm bg-orange-400 hover:bg-orange-500 text-white font-bold rounded-xl disabled:opacity-50 flex items-center gap-2">
-                  <ShoppingCart className="w-4 h-4" /> 批次轉採購單
-                </button>
-                <button onClick={handleBulkConfirmReceive} disabled={selectedApproved.length === 0} className="px-4 py-2 text-sm bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-xl disabled:opacity-50 flex items-center gap-2">
-                  <Package className="w-4 h-4" /> 批次確認領用
-                </button>
-              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b-2 border-sky-100 text-sky-700">
-                    <th className="pb-3 pl-2 w-10">
-                      <input 
-                        type="checkbox" 
-                        onChange={e => {
-                          if (e.target.checked) setSelectedApproved(paginatedApproved.map(r => r.id));
-                          else setSelectedApproved(selectedApproved.filter(id => !paginatedApproved.find(r => r.id === id)));
-                        }}
-                        checked={paginatedApproved.length > 0 && paginatedApproved.every(r => selectedApproved.includes(r.id))}
-                        className="w-5 h-5 rounded border-sky-300 text-sky-500 focus:ring-sky-200"
-                      />
+                    <th className="pb-3 pl-2 w-28">
+                      <div className="flex flex-col items-start gap-2">
+                        <div className="flex gap-2">
+                          <button onClick={() => setSelectedApproved(paginatedApproved.map(r => r.id))} className="text-xs bg-sky-100 text-sky-600 px-2 py-1 rounded hover:bg-sky-200">全選</button>
+                          <button onClick={() => setSelectedApproved([])} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded hover:bg-gray-200">全取消</button>
+                        </div>
+                        <input 
+                          type="checkbox" 
+                          onChange={e => {
+                            if (e.target.checked) setSelectedApproved(paginatedApproved.map(r => r.id));
+                            else setSelectedApproved(selectedApproved.filter(id => !paginatedApproved.find(r => r.id === id)));
+                          }}
+                          checked={paginatedApproved.length > 0 && paginatedApproved.every(r => selectedApproved.includes(r.id))}
+                          className="w-5 h-5 rounded border-sky-300 text-sky-500 focus:ring-sky-200 ml-1"
+                        />
+                      </div>
                     </th>
+                    <th className="pb-3">單號</th>
                     <th className="pb-3">申請日期</th>
                     <th className="pb-3">申請單位</th>
                     <th className="pb-3">申請人員</th>
                     <th className="pb-3">申請物品</th>
                     <th className="pb-3">狀態</th>
-                    <th className="pb-3 text-right pr-4">操作</th>
+                    <th className="pb-3 text-right pr-4">
+                      <div className="flex justify-end gap-2">
+                        <button onClick={handleBulkConvertToProcurement} disabled={selectedApproved.length === 0} className="px-3 py-2 text-sm bg-orange-400 hover:bg-orange-500 text-white font-bold rounded-xl disabled:opacity-50 flex items-center gap-1">
+                          <ShoppingCart className="w-4 h-4" /> 批次轉採購
+                        </button>
+                        <button onClick={handleBulkConfirmReceive} disabled={selectedApproved.length === 0} className="px-3 py-2 text-sm bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-xl disabled:opacity-50 flex items-center gap-1">
+                          <Package className="w-4 h-4" /> 批次確認領用
+                        </button>
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedApproved.map(req => (
                     <tr key={req.id} className="border-b border-gray-100 hover:bg-sky-50/50">
-                      <td className="py-4 pl-2">
+                      <td className="py-4 pl-3">
                         <input 
                           type="checkbox"
                           checked={selectedApproved.includes(req.id)}
@@ -326,6 +440,7 @@ export default function WorkflowPage() {
                           className="w-5 h-5 rounded border-sky-300 text-sky-500 focus:ring-sky-200"
                         />
                       </td>
+                      <td className="py-4 font-bold text-gray-800">{req.id}</td>
                       <td className="py-4 text-gray-600">{req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('zh-TW') : 'N/A'}</td>
                       <td className="py-4 font-bold text-gray-800">{req.departmentName}</td>
                       <td className="py-4 text-gray-800">{req.applicantName}</td>
@@ -366,15 +481,15 @@ export default function WorkflowPage() {
                       </td>
                     </tr>
                   ))}
-                  {paginatedApproved.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-gray-400">目前沒有已核可的資料</td></tr>}
+                  {paginatedApproved.length === 0 && <tr><td colSpan={8} className="text-center py-10 text-gray-400">目前沒有已核可的資料</td></tr>}
                 </tbody>
               </table>
             </div>
             {totalApprovedPages > 1 && (
               <div className="flex justify-center items-center gap-4 mt-6">
-                <button disabled={approvedPage === 1} onClick={() => setApprovedPage(p => p - 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50">上一頁</button>
+                <button disabled={approvedPage === 1} onClick={() => setApprovedPage(p => p - 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50 font-bold">上一頁</button>
                 <span className="text-gray-600 font-bold">{approvedPage} / {totalApprovedPages}</span>
-                <button disabled={approvedPage === totalApprovedPages} onClick={() => setApprovedPage(p => p + 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50">下一頁</button>
+                <button disabled={approvedPage === totalApprovedPages} onClick={() => setApprovedPage(p => p + 1)} className="px-4 py-2 bg-sky-50 text-sky-500 rounded-xl disabled:opacity-50 font-bold">下一頁</button>
               </div>
             )}
           </div>
