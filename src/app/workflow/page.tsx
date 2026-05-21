@@ -37,9 +37,7 @@ export default function WorkflowPage() {
   const [editItems, setEditItems] = useState<RequestItem[]>([]);
   const [newItemCatId, setNewItemCatId] = useState('');
   const [newItemSupId, setNewItemSupId] = useState('');
-  const [newItemQty, setNewItemQty] = useState(1);
-
-  const [icons, setIcons] = useState<AppIcon[]>([]);
+  const [newItemQty, setNewItemQty] = useState<number | string>(1);
 
   const fetchData = async () => {
     try {
@@ -110,17 +108,18 @@ export default function WorkflowPage() {
   };
 
   const handleAddNewItemToReq = () => {
-    if (!newItemSupId || newItemQty <= 0) return;
+    const qty = Number(newItemQty) || 0;
+    if (!newItemSupId || qty <= 0) return;
     const supply = supplies.find(s => s.id === newItemSupId);
     if (!supply) return;
     
     const existing = editItems.find(item => item.supplyId === newItemSupId);
     if (existing) {
       setEditItems(editItems.map(item => 
-        item.supplyId === newItemSupId ? { ...item, quantity: item.quantity + newItemQty } : item
+        item.supplyId === newItemSupId ? { ...item, quantity: item.quantity + qty } : item
       ));
     } else {
-      setEditItems([...editItems, { supplyId: supply.id, name: supply.name, quantity: newItemQty }]);
+      setEditItems([...editItems, { supplyId: supply.id, name: supply.name, quantity: qty }]);
     }
     setNewItemCatId('');
     setNewItemSupId('');
@@ -255,9 +254,9 @@ export default function WorkflowPage() {
                   {renderIcon(item.supplyId)}
                   <input className="flex-1 p-3 border-2 border-gray-100 bg-gray-50 rounded-xl text-gray-700 font-medium" value={item.name} disabled />
                   <span className="text-gray-500 font-bold">x</span>
-                  <input className="w-24 p-3 border-2 border-sky-100 focus:border-sky-300 focus:ring-2 focus:ring-sky-200 outline-none rounded-xl text-center font-bold text-sky-600" type="number" min="1" value={item.quantity} onChange={e => {
+                  <input className="w-24 p-3 border-2 border-sky-100 focus:border-sky-300 focus:ring-2 focus:ring-sky-200 outline-none rounded-xl text-center font-bold text-sky-600" type="number" min="1" value={item.quantity === 0 ? '' : item.quantity} onChange={e => {
                     const newItems = [...editItems];
-                    newItems[i].quantity = parseInt(e.target.value) || 1;
+                    newItems[i].quantity = e.target.value === '' ? 0 : parseInt(e.target.value);
                     setEditItems(newItems);
                   }} />
                   <button onClick={() => setEditItems(editItems.filter((_, idx) => idx !== i))} className="p-3 text-red-400 hover:bg-red-50 rounded-xl"><Trash2 className="w-5 h-5"/></button>
@@ -279,7 +278,7 @@ export default function WorkflowPage() {
                     <option value="">-- 再選擇物品 --</option>
                     {editFilteredSupplies.map(s => <option key={s.id} value={s.id}>{s.name} (庫存:{s.quantity})</option>)}
                   </select>
-                  <input type="number" min="1" value={newItemQty} onChange={e => setNewItemQty(parseInt(e.target.value))} className="w-20 p-2 border-2 border-sky-100 rounded-xl text-center outline-none" />
+                  <input type="number" min="1" value={newItemQty} onChange={e => setNewItemQty(e.target.value === '' ? '' : parseInt(e.target.value))} className="w-20 p-2 border-2 border-sky-100 rounded-xl text-center outline-none" />
                   <button onClick={handleAddNewItemToReq} className="bg-sky-400 text-white px-4 rounded-xl font-bold hover:bg-sky-500">加入</button>
                 </div>
               </div>

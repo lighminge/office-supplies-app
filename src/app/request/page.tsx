@@ -33,7 +33,7 @@ export default function RequestPage() {
   // Create Request State
   const [selectedItems, setSelectedItems] = useState<RequestItem[]>([]);
   const [currentItemId, setCurrentItemId] = useState('');
-  const [currentQty, setCurrentQty] = useState(1);
+  const [currentQty, setCurrentQty] = useState<number | string>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
   
@@ -51,7 +51,7 @@ export default function RequestPage() {
   const [editItems, setEditItems] = useState<RequestItem[]>([]);
   const [editCategoryId, setEditCategoryId] = useState('');
   const [editItemId, setEditItemId] = useState('');
-  const [editQty, setEditQty] = useState(1);
+  const [editQty, setEditQty] = useState<number | string>(1);
 
   const fetchData = async () => {
     try {
@@ -88,17 +88,18 @@ export default function RequestPage() {
 
   // Create Flow
   const handleAddItem = () => {
-    if (!currentItemId || currentQty <= 0) return;
+    const qty = Number(currentQty) || 0;
+    if (!currentItemId || qty <= 0) return;
     const supply = supplies.find(s => s.id === currentItemId);
     if (!supply) return;
     
     const existing = selectedItems.find(item => item.supplyId === currentItemId);
     if (existing) {
       setSelectedItems(selectedItems.map(item => 
-        item.supplyId === currentItemId ? { ...item, quantity: item.quantity + currentQty } : item
+        item.supplyId === currentItemId ? { ...item, quantity: item.quantity + qty } : item
       ));
     } else {
-      setSelectedItems([...selectedItems, { supplyId: supply.id, name: supply.name, quantity: currentQty }]);
+      setSelectedItems([...selectedItems, { supplyId: supply.id, name: supply.name, quantity: qty }]);
     }
     setCurrentItemId(''); setCurrentQty(1); setIsAddItemModalOpen(false);
   };
@@ -110,17 +111,18 @@ export default function RequestPage() {
     setEditItems(req.items.map(item => ({ ...item }))); // Deep copy
   };
   const handleAddEditItem = () => {
-    if (!editItemId || editQty <= 0) return;
+    const qty = Number(editQty) || 0;
+    if (!editItemId || qty <= 0) return;
     const supply = supplies.find(s => s.id === editItemId);
     if (!supply) return;
     
     const existing = editItems.find(item => item.supplyId === editItemId);
     if (existing) {
       setEditItems(editItems.map(item => 
-        item.supplyId === editItemId ? { ...item, quantity: item.quantity + editQty } : item
+        item.supplyId === editItemId ? { ...item, quantity: item.quantity + qty } : item
       ));
     } else {
-      setEditItems([...editItems, { supplyId: supply.id, name: supply.name, quantity: editQty }]);
+      setEditItems([...editItems, { supplyId: supply.id, name: supply.name, quantity: qty }]);
     }
     setEditItemId(''); setEditQty(1);
   };
@@ -240,9 +242,9 @@ export default function RequestPage() {
                   {renderIcon(item.supplyId)}
                   <input className="flex-1 p-3 border-2 border-gray-100 bg-gray-50 rounded-xl text-gray-700 font-medium" value={item.name} disabled />
                   <span className="text-gray-500 font-bold">x</span>
-                  <input className="w-24 p-3 border-2 border-sky-100 focus:border-sky-300 focus:ring-2 focus:ring-sky-200 outline-none rounded-xl text-center font-bold text-sky-600" type="number" min="1" value={item.quantity} onChange={e => {
+                  <input className="w-24 p-3 border-2 border-sky-100 focus:border-sky-300 focus:ring-2 focus:ring-sky-200 outline-none rounded-xl text-center font-bold text-sky-600" type="number" min="1" value={item.quantity === 0 ? '' : item.quantity} onChange={e => {
                     const newItems = [...editItems];
-                    newItems[i].quantity = parseInt(e.target.value) || 1;
+                    newItems[i].quantity = e.target.value === '' ? 0 : parseInt(e.target.value);
                     setEditItems(newItems);
                   }} />
                   <button onClick={() => setEditItems(editItems.filter((_, idx) => idx !== i))} className="p-3 text-red-400 hover:bg-red-50 rounded-xl"><Trash2 className="w-5 h-5"/></button>
@@ -264,7 +266,7 @@ export default function RequestPage() {
                     <option value="">-- 再選擇物品 --</option>
                     {editFilteredSupplies.map(s => <option key={s.id} value={s.id}>{s.name} (庫存:{s.quantity})</option>)}
                   </select>
-                  <input type="number" min="1" value={editQty} onChange={e => setEditQty(parseInt(e.target.value) || 1)} className="w-20 p-2 border-2 border-sky-100 rounded-xl text-center outline-none" />
+                  <input type="number" min="1" value={editQty} onChange={e => setEditQty(e.target.value === '' ? '' : parseInt(e.target.value))} className="w-20 p-2 border-2 border-sky-100 rounded-xl text-center outline-none" />
                   <button onClick={handleAddEditItem} className="bg-sky-400 text-white px-4 py-2 rounded-xl font-bold hover:bg-sky-500">加入</button>
                 </div>
               </div>
@@ -319,7 +321,7 @@ export default function RequestPage() {
                 <input 
                   type="number" 
                   value={currentQty}
-                  onChange={e => setCurrentQty(parseInt(e.target.value) || 1)}
+                  onChange={e => setCurrentQty(e.target.value === '' ? '' : parseInt(e.target.value))}
                   min="1"
                   className="w-full rounded-xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 text-center"
                 />

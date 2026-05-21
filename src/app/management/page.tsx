@@ -33,42 +33,15 @@ export default function ManagementPage() {
   // Modals
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
-  const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmBtnText, setConfirmBtnText] = useState('確認');
+  const [confirmBtnColor, setConfirmBtnColor] = useState('bg-sky-500 hover:bg-sky-600 shadow-sky-200');
 
-  // Procurement History Filter & Pagination
-  const [procStartDate, setProcStartDate] = useState('');
-  const [procEndDate, setProcEndDate] = useState('');
-  const [procPage, setProcPage] = useState(1);
-  const procPerPage = 10;
-  const [selectedProcs, setSelectedProcs] = useState<string[]>([]);
-  const [restockDateModalOpen, setRestockDateModalOpen] = useState(false);
-  const [restockDate, setRestockDate] = useState(new Date().toISOString().split('T')[0]);
-  const [targetProcForRestock, setTargetProcForRestock] = useState<ProcurementRecord | null>(null);
-
-  const fetchData = async () => {
-    try {
-      const [catSnap, iconSnap, supSnap, procSnap, reqSnap] = await Promise.all([
-        getDocs(collection(db, 'categories')),
-        getDocs(collection(db, 'icons')),
-        getDocs(collection(db, 'supplies')),
-        getDocs(collection(db, 'procurements')),
-        getDocs(collection(db, 'requests')),
-      ]);
-
-      setCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
-      setIcons(iconSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppIcon)));
-      setSupplies(supSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfficeSupply)));
-      
-      const rawProc = procSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProcurementRecord));
-      setProcurements(rawProc.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
-
-      // Fetch requests that are 'purchasing'
-      const rawReq = reqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestRecord));
-      setPurchasingRequests(rawReq.filter(r => r.status === 'purchasing'));
-
-    } catch (error) {
-      console.error('Error fetching management data', error);
-    }
+  const requestAction = (msg: string, action: () => Promise<void>, btnText = '確認', btnColor = 'bg-sky-500 hover:bg-sky-600 shadow-sky-200') => {
+    setConfirmMessage(msg);
+    setConfirmAction(() => action);
+    setConfirmBtnText(btnText);
+    setConfirmBtnColor(btnColor);
+    setConfirmOpen(true);
   };
 
   useEffect(() => {
@@ -151,8 +124,8 @@ export default function ManagementPage() {
   
   const [procCatId, setProcCatId] = useState('');
   const [procSupplyId, setProcSupplyId] = useState('');
-  const [procQty, setProcQty] = useState(1);
-  const [procPrice, setProcPrice] = useState(0);
+  const [procQty, setProcQty] = useState<number | string>(1);
+  const [procPrice, setProcPrice] = useState<number | string>(0);
 
   // Edit logic for procurement items
   const [editingProcSupplyId, setEditingProcSupplyId] = useState('');
@@ -179,21 +152,23 @@ export default function ManagementPage() {
   }, [activeTab, purchasingRequests]);
 
   const handleAddProcItem = () => {
-    if (!procSupplyId || procQty <= 0) return;
+    const qty = Number(procQty) || 0;
+    const price = Number(procPrice) || 0;
+    if (!procSupplyId || qty <= 0) return;
     const supply = supplies.find(s => s.id === procSupplyId);
     if (!supply) return;
 
     if (editingProcSupplyId) {
        // Updating existing item
-       setProcItems(procItems.map(i => i.supplyId === editingProcSupplyId ? { supplyId: procSupplyId, name: supply.name, quantity: procQty, unitPrice: procPrice } : i));
+       setProcItems(procItems.map(i => i.supplyId === editingProcSupplyId ? { supplyId: procSupplyId, name: supply.name, quantity: qty, unitPrice: price } : i));
        setEditingProcSupplyId('');
     } else {
       // Adding new
       const existing = procItems.find(i => i.supplyId === procSupplyId);
       if (existing) {
-        setProcItems(procItems.map(i => i.supplyId === procSupplyId ? { ...i, quantity: i.quantity + procQty, unitPrice: procPrice } : i));
+        setProcItems(procItems.map(i => i.supplyId === procSupplyId ? { ...i, quantity: i.quantity + qty, unitPrice: price } : i));
       } else {
-        setProcItems([...procItems, { supplyId: procSupplyId, name: supply.name, quantity: procQty, unitPrice: procPrice }]);
+        setProcItems([...procItems, { supplyId: procSupplyId, name: supply.name, quantity: qty, unitPrice: price }]);
       }
     }
     setProcSupplyId('');
@@ -564,11 +539,11 @@ export default function ManagementPage() {
                   </div>
                   <div className="w-24">
                     <label className="block text-xs font-medium text-gray-500 mb-1">採買數量</label>
-                    <input type="number" placeholder="數量" value={procQty} onChange={e => setProcQty(parseInt(e.target.value))} min="1" className="w-full rounded-xl border-2 border-orange-100 px-3 py-2" />
+                    <input type="number" placeholder="數量" value={procQty} onChange={e => setProcQty(e.target.value === '' ? '' : parseInt(e.target.value))} min="1" className="w-full rounded-xl border-2 border-orange-100 px-3 py-2" />
                   </div>
                   <div className="w-32">
                     <label className="block text-xs font-medium text-gray-500 mb-1">單價 (元)</label>
-                    <input type="number" placeholder="單價($)" value={procPrice} onChange={e => setProcPrice(parseInt(e.target.value))} min="0" className="w-full rounded-xl border-2 border-orange-100 px-3 py-2" />
+                    <input type="number" placeholder="單價($)" value={procPrice} onChange={e => setProcPrice(e.target.value === '' ? '' : parseInt(e.target.value))} min="0" className="w-full rounded-xl border-2 border-orange-100 px-3 py-2" />
                   </div>
                   <button onClick={handleAddProcItem} className="bg-orange-400 hover:bg-orange-500 text-white px-6 py-2 rounded-xl font-bold whitespace-nowrap h-[44px]">儲存品項</button>
                   {editingProcSupplyId && <button onClick={() => {setEditingProcSupplyId(''); setProcCatId(''); setProcSupplyId('');}} className="bg-gray-100 text-gray-600 px-4 py-2 rounded-xl font-bold h-[44px]">取消</button>}
