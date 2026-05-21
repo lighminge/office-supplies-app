@@ -48,12 +48,6 @@ export default function ManagementPage() {
     fetchData();
   }, []);
 
-  const requestAction = (msg: string, action: () => Promise<void>) => {
-    setConfirmMessage(msg);
-    setConfirmAction(() => action);
-    setConfirmOpen(true);
-  };
-
   // --- Category ---
   const [catId, setCatId] = useState('');
   const [catName, setCatName] = useState('');
