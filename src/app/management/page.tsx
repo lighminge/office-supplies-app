@@ -33,6 +33,7 @@ export default function ManagementPage() {
   // Modals
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
+  const [confirmMessage, setConfirmMessage] = useState('');
   const [confirmBtnText, setConfirmBtnText] = useState('確認');
   const [confirmBtnColor, setConfirmBtnColor] = useState('bg-sky-500 hover:bg-sky-600 shadow-sky-200');
 
