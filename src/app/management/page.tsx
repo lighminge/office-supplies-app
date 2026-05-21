@@ -45,6 +45,32 @@ export default function ManagementPage() {
     setConfirmOpen(true);
   };
 
+  const fetchData = async () => {
+    try {
+      const [catSnap, iconSnap, supSnap, procSnap, reqSnap] = await Promise.all([
+        getDocs(collection(db, 'categories')),
+        getDocs(collection(db, 'icons')),
+        getDocs(collection(db, 'supplies')),
+        getDocs(collection(db, 'procurements')),
+        getDocs(collection(db, 'requests')),
+      ]);
+
+      setCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
+      setIcons(iconSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppIcon)));
+      setSupplies(supSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfficeSupply)));
+      
+      const rawProc = procSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProcurementRecord));
+      setProcurements(rawProc.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
+
+      // Fetch requests that are 'purchasing'
+      const rawReq = reqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RequestRecord));
+      setPurchasingRequests(rawReq.filter(r => r.status === 'purchasing'));
+
+    } catch (error) {
+      console.error('Error fetching management data', error);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
