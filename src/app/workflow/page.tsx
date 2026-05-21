@@ -507,11 +507,10 @@ export default function WorkflowPage() {
                           )}
                           <button 
                             onClick={() => handleConfirmReceive(req)} 
-                            className="bg-sky-400 hover:bg-sky-500 text-white p-2 rounded-xl text-sm disabled:opacity-50 disabled:bg-gray-300" 
-                            title="確認領用 (扣庫存)" 
+                            className="bg-sky-400 hover:bg-sky-500 text-white px-3 py-2 rounded-xl text-sm font-bold disabled:opacity-50 disabled:bg-gray-300 flex items-center gap-1" 
                             disabled={req.status === 'purchasing'}
                           >
-                            <Package className="w-4 h-4" />
+                            <Package className="w-4 h-4" /> 物品領用
                           </button>
                           <button onClick={() => handleRevert(req.id)} disabled={req.status === 'purchasing' || req.status === 'restocked'} className="bg-gray-100 hover:bg-gray-200 text-gray-600 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-gray-100" title="退回到申請單">
                             <RotateCcw className="w-4 h-4" />
