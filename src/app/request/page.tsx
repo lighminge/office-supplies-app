@@ -440,6 +440,8 @@ export default function RequestPage() {
                               <span className="bg-green-100 text-green-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">已核可</span>
                             ) : req.status === 'purchasing' ? (
                               <span className="bg-orange-100 text-orange-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">採購中</span>
+                            ) : req.status === 'restocked' ? (
+                              <span className="bg-blue-100 text-blue-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">已入庫</span>
                             ) : (
                               <span className="bg-yellow-100 text-yellow-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">未核可</span>
                             )}

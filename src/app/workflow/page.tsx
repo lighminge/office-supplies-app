@@ -222,7 +222,7 @@ export default function WorkflowPage() {
   };
 
   const pendingRequests = requests.filter(r => !r.status || r.status === 'pending');
-  const approvedRequests = requests.filter(r => r.status === 'approved' || r.status === 'purchasing');
+  const approvedRequests = requests.filter(r => r.status === 'approved' || r.status === 'purchasing' || r.status === 'restocked');
 
   const totalPendingPages = Math.ceil(pendingRequests.length / itemsPerPage) || 1;
   const totalApprovedPages = Math.ceil(approvedRequests.length / itemsPerPage) || 1;
@@ -492,24 +492,31 @@ export default function WorkflowPage() {
                       <td className="py-4">
                         {req.status === 'purchasing' ? (
                           <span className="bg-orange-100 text-orange-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">採購中</span>
+                        ) : req.status === 'restocked' ? (
+                          <span className="bg-blue-100 text-blue-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">已入庫</span>
                         ) : (
                           <span className="bg-green-100 text-green-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">已核可</span>
                         )}
                       </td>
                       <td className="py-4 text-right pr-4">
                         <div className="flex flex-wrap justify-end gap-2">
-                          {req.status !== 'purchasing' && (
+                          {(req.status === 'approved' || req.status === 'restocked') && (
                             <button onClick={() => handleConvertToProcurement(req.id)} className="bg-orange-400 hover:bg-orange-500 text-white p-2 rounded-xl text-sm" title="轉採購單">
                               <ShoppingCart className="w-4 h-4" />
                             </button>
                           )}
-                          <button onClick={() => handleConfirmReceive(req)} className="bg-sky-400 hover:bg-sky-500 text-white p-2 rounded-xl text-sm disabled:opacity-50 disabled:bg-gray-300" title="確認領用 (扣庫存)" disabled={req.status === 'purchasing'}>
+                          <button 
+                            onClick={() => handleConfirmReceive(req)} 
+                            className="bg-sky-400 hover:bg-sky-500 text-white p-2 rounded-xl text-sm disabled:opacity-50 disabled:bg-gray-300" 
+                            title="確認領用 (扣庫存)" 
+                            disabled={req.status === 'purchasing'}
+                          >
                             <Package className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleRevert(req.id)} disabled={req.status === 'purchasing'} className="bg-gray-100 hover:bg-gray-200 text-gray-600 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-gray-100" title="退回到申請單">
+                          <button onClick={() => handleRevert(req.id)} disabled={req.status === 'purchasing' || req.status === 'restocked'} className="bg-gray-100 hover:bg-gray-200 text-gray-600 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-gray-100" title="退回到申請單">
                             <RotateCcw className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleDelete(req.id)} disabled={req.status === 'purchasing'} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-red-50" title="取消申請(刪除)">
+                          <button onClick={() => handleDelete(req.id)} disabled={req.status === 'purchasing' || req.status === 'restocked'} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-red-50" title="取消申請(刪除)">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
