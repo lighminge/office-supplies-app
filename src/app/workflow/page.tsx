@@ -95,17 +95,19 @@ export default function WorkflowPage() {
 
   const handleUpdateReq = async () => {
     if (!editingReq) return;
-    try {
-      const cleanItems = editItems.map(item => ({
-        supplyId: item.supplyId || '',
-        name: item.name || '',
-        quantity: Number(item.quantity) || 1
-      }));
-      await updateDoc(doc(db, 'requests', editingReq.id), { items: cleanItems });
-      setEditingReq(null);
-      alert('修改成功！');
-      fetchData();
-    } catch (e: any) { alert('儲存失敗：' + e.message); }
+    requestAction('確定要儲存修改後的申請單內容嗎？', async () => {
+      try {
+        const cleanItems = editItems.map(item => ({
+          supplyId: item.supplyId || '',
+          name: item.name || '',
+          quantity: Number(item.quantity) || 1
+        }));
+        await updateDoc(doc(db, 'requests', editingReq.id), { items: cleanItems });
+        setEditingReq(null);
+        alert('修改成功！');
+        fetchData();
+      } catch (e: any) { alert('儲存失敗：' + e.message); }
+    }, '確認修改', 'bg-sky-500 hover:bg-sky-600 shadow-sky-200');
   };
 
   const handleAddNewItemToReq = () => {

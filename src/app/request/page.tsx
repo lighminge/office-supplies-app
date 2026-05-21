@@ -479,9 +479,10 @@ export default function RequestPage() {
                 </div>
 
                 <ul className="space-y-3 mb-8">
-                  {selectedItems.map(item => (
+                  {selectedItems.map((item, index) => (
                     <li key={item.supplyId} className="flex justify-between items-center bg-white border border-sky-100 rounded-xl p-4 shadow-sm">
                       <div className="flex items-center gap-2">
+                        <span className="font-bold text-sky-600 bg-sky-100 w-6 h-6 flex items-center justify-center rounded-full text-xs">{index + 1}</span>
                         {renderIcon(item.supplyId)}
                         <span className="font-medium text-gray-800">{item.name}</span>
                       </div>

@@ -172,12 +172,15 @@ export default function ManagementPage() {
           aggregated[item.supplyId].quantity += item.quantity;
         });
       });
-      const newProcItems: ProcurementItem[] = Object.entries(aggregated).map(([supplyId, data]) => ({
-        supplyId,
-        name: data.name,
-        quantity: data.quantity,
-        unitPrice: 0
-      }));
+      const newProcItems: ProcurementItem[] = Object.entries(aggregated).map(([supplyId, data]) => {
+        const supply = supplies.find(s => s.id === supplyId);
+        return {
+          supplyId,
+          name: data.name,
+          quantity: data.quantity,
+          unitPrice: supply ? (supply.price || 0) : 0
+        };
+      });
       setProcItems(newProcItems);
     }
   }, [activeTab, purchasingRequests]);
@@ -285,15 +288,17 @@ export default function ManagementPage() {
   };
 
   const handleRestockModalConfirm = () => {
-    if (targetProcForRestock) {
-      processRestock([targetProcForRestock], restockDate);
-    } else if (selectedProcs.length > 0) {
-      const selectedRecords = filteredProcurements.filter(p => selectedProcs.includes(p.id));
-      processRestock(selectedRecords, restockDate);
-    }
     setRestockDateModalOpen(false);
-    setSelectedProcs([]);
-    setTargetProcForRestock(null);
+    requestAction('確定要將採購單的物品進行入庫嗎？入庫後將無法修改與刪除。', async () => {
+      if (targetProcForRestock) {
+        await processRestock([targetProcForRestock], restockDate);
+      } else if (selectedProcs.length > 0) {
+        const selectedRecords = filteredProcurements.filter(p => selectedProcs.includes(p.id));
+        await processRestock(selectedRecords, restockDate);
+      }
+      setSelectedProcs([]);
+      setTargetProcForRestock(null);
+    });
   };
 
   const openRestockModal = (proc?: ProcurementRecord) => {
@@ -630,7 +635,7 @@ export default function ManagementPage() {
             </div>
 
             <h2 className="text-xl font-bold text-gray-800 mb-4 border-b-2 border-gray-100 pb-2 flex items-center justify-between">
-              <span>歷史採購清單 (總計 {filteredProcurements.length} 筆)</span>
+              <span>採購清單 (總計 {filteredProcurements.length} 筆)</span>
             </h2>
 
             <div className="flex flex-col md:flex-row gap-4 mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100 items-center">
@@ -711,7 +716,7 @@ export default function ManagementPage() {
                               </button>
                             </>
                           )}
-                          <button onClick={() => handleDeleteProcurement(proc.id)} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-xl text-sm" title="刪除">
+                          <button onClick={() => handleDeleteProcurement(proc.id)} disabled={proc.isRestocked} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-red-50" title="刪除">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
