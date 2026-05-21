@@ -37,6 +37,16 @@ export default function ManagementPage() {
   const [confirmBtnText, setConfirmBtnText] = useState('確認');
   const [confirmBtnColor, setConfirmBtnColor] = useState('bg-sky-500 hover:bg-sky-600 shadow-sky-200');
 
+  // Procurement History Filter & Pagination
+  const [procStartDate, setProcStartDate] = useState('');
+  const [procEndDate, setProcEndDate] = useState('');
+  const [procPage, setProcPage] = useState(1);
+  const procPerPage = 10;
+  const [selectedProcs, setSelectedProcs] = useState<string[]>([]);
+  const [restockDateModalOpen, setRestockDateModalOpen] = useState(false);
+  const [restockDate, setRestockDate] = useState(new Date().toISOString().split('T')[0]);
+  const [targetProcForRestock, setTargetProcForRestock] = useState<ProcurementRecord | null>(null);
+
   const requestAction = (msg: string, action: () => Promise<void>, btnText = '確認', btnColor = 'bg-sky-500 hover:bg-sky-600 shadow-sky-200') => {
     setConfirmMessage(msg);
     setConfirmAction(() => action);
