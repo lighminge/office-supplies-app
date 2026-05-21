@@ -39,7 +39,18 @@ export default function RequestPage() {
   
   // Modals
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmBtnText, setConfirmBtnText] = useState('確認');
+  const [confirmBtnColor, setConfirmBtnColor] = useState('bg-sky-500 hover:bg-sky-600 shadow-sky-200');
+
+  const requestAction = (msg: string, action: () => Promise<void> | void, btnText = '確認', btnColor = 'bg-sky-500 hover:bg-sky-600 shadow-sky-200') => {
+    setConfirmMessage(msg);
+    setConfirmAction(() => action);
+    setConfirmBtnText(btnText);
+    setConfirmBtnColor(btnColor);
+    setConfirmOpen(true);
+  };
 
   // Print references
   const printRef = useRef<HTMLDivElement>(null);
@@ -128,17 +139,19 @@ export default function RequestPage() {
   };
   const handleSaveEdit = async () => {
     if (!editingReq) return;
-    try {
-      const cleanItems = editItems.map(item => ({
-        supplyId: item.supplyId || '',
-        name: item.name || '',
-        quantity: Number(item.quantity) || 1
-      }));
-      await updateDoc(doc(db, 'requests', editingReq.id), { items: cleanItems });
-      setEditingReq(null);
-      alert('修改成功！');
-      fetchData();
-    } catch (e: any) { alert('儲存失敗：' + e.message); }
+    requestAction('確定要儲存修改後的申請單內容嗎？', async () => {
+      try {
+        const cleanItems = editItems.map(item => ({
+          supplyId: item.supplyId || '',
+          name: item.name || '',
+          quantity: Number(item.quantity) || 1
+        }));
+        await updateDoc(doc(db, 'requests', editingReq.id), { items: cleanItems });
+        setEditingReq(null);
+        alert('修改成功！');
+        fetchData();
+      } catch (e: any) { alert('儲存失敗：' + e.message); }
+    });
   };
 
   // Print Logic
@@ -168,7 +181,13 @@ export default function RequestPage() {
     }, 100);
   };
 
-  // Submit Logic
+  const handleSubmitClick = () => {
+    if (!selectedDeptId || !selectedPersonId || selectedItems.length === 0) {
+      alert('請填寫申請單位、人員，並至少選擇一項物品！'); return;
+    }
+    requestAction('確定要送出這張申請單嗎？送出後將產生 PDF 檔案供您列印。', handleSubmit);
+  };
+
   const handleSubmit = async () => {
     if (!selectedDeptId || !selectedPersonId || selectedItems.length === 0) {
       alert('請填寫申請單位、人員，並至少選擇一項物品！'); return;
@@ -208,9 +227,11 @@ export default function RequestPage() {
     finally { setIsSubmitting(false); setConfirmOpen(false); }
   };
 
-  const handleDeleteRequest = async (id: string) => {
-    try { await deleteDoc(doc(db, 'requests', id)); fetchData(); setDeleteId(null); }
-    catch (e: any) { alert('刪除失敗'); }
+  const handleDeleteRequest = (id: string) => {
+    requestAction('確定要刪除這筆申請單嗎？', async () => {
+      try { await deleteDoc(doc(db, 'requests', id)); fetchData(); }
+      catch (e: any) { alert('刪除失敗'); }
+    }, '確認刪除', 'bg-red-400 hover:bg-red-500 shadow-red-200');
   };
 
   const filteredPersonnel = personnel.filter(p => p.departmentId === selectedDeptId);
@@ -466,7 +487,7 @@ export default function RequestPage() {
                   {selectedItems.length === 0 && <li className="text-center py-10 bg-sky-50 rounded-xl border-2 border-dashed border-sky-100 text-gray-400">目前還沒有加入任何物品喔！</li>}
                 </ul>
 
-                <button onClick={() => setConfirmOpen(true)} disabled={isSubmitting || selectedItems.length === 0} className="w-full bg-sky-500 hover:bg-sky-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-sky-200 transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2">
+                <button onClick={handleSubmitClick} disabled={isSubmitting || selectedItems.length === 0} className="w-full bg-sky-500 hover:bg-sky-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-sky-200 transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2">
                   <Printer className="w-6 h-6" /> {isSubmitting ? '處理中...' : '送出申請單 ✨'}
                 </button>
               </div>
