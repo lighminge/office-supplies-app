@@ -247,8 +247,15 @@ export default function RequestPage() {
 
   return (
     <main className="min-h-screen p-6 md:p-12 max-w-4xl mx-auto">
-      <ConfirmModal isOpen={confirmOpen} title="確認送出" message="確定要送出這張申請單嗎？" onConfirm={handleSubmit} onCancel={() => setConfirmOpen(false)} confirmText="確認" confirmColor="bg-sky-500 hover:bg-sky-600 shadow-sky-200" />
-      <ConfirmModal isOpen={!!deleteId} title="確認刪除" message="確定要刪除這筆申請單嗎？" onConfirm={() => deleteId && handleDeleteRequest(deleteId)} onCancel={() => setDeleteId(null)} confirmText="確認" />
+      <ConfirmModal 
+        isOpen={confirmOpen} 
+        title="確認執行" 
+        message={confirmMessage} 
+        onConfirm={confirmAction} 
+        onCancel={() => setConfirmOpen(false)} 
+        confirmText={confirmBtnText} 
+        confirmColor={confirmBtnColor} 
+      />
 
       {/* Editing Modal */}
       {editingReq && (
