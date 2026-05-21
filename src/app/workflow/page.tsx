@@ -16,6 +16,7 @@ export default function WorkflowPage() {
   const [personnel, setPersonnel] = useState<Personnel[]>([]);
   const [supplies, setSupplies] = useState<OfficeSupply[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [icons, setIcons] = useState<AppIcon[]>([]);
 
   // Pagination states
   const [pendingPage, setPendingPage] = useState(1);
