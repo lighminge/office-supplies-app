@@ -511,8 +511,8 @@ export default function RequestPage() {
       </div>
 
       {/* Hidden printable area */}
-      <div className="hidden">
-        <div ref={printRef} className="p-10 font-handwriting text-gray-800 max-w-[800px] mx-auto bg-white">
+      <div className="absolute -left-[9999px] top-0 opacity-0 pointer-events-none">
+        <div ref={printRef} className="p-10 font-handwriting text-gray-800 w-[800px] bg-white">
           <h1 className="text-3xl font-bold text-center mb-8 border-b-2 border-gray-800 pb-4">辦公室用品申請單</h1>
           
           <div className="flex justify-between mb-8 text-lg">
@@ -529,7 +529,7 @@ export default function RequestPage() {
           <table className="w-full text-left border-collapse mb-10 text-lg">
             <thead>
               <tr>
-                <th className="border-b-2 border-gray-800 py-2">項次</th>
+                <th className="border-b-2 border-gray-800 py-2 w-16">項次</th>
                 <th className="border-b-2 border-gray-800 py-2">物品名稱</th>
                 <th className="border-b-2 border-gray-800 py-2 text-right">數量</th>
               </tr>
@@ -537,6 +537,49 @@ export default function RequestPage() {
             <tbody>
               {(printingRequest?.items || selectedItems).map((item, index) => (
                 <tr key={item.supplyId}>
+                  <td className="border-b border-gray-300 py-3">{index + 1}</td>
+                  <td className="border-b border-gray-300 py-3">{item.name}</td>
+                  <td className="border-b border-gray-300 py-3 text-right">{item.quantity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="flex justify-between mt-20 pt-10 text-lg">
+            <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">申請人簽章</p></div>
+            <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">單位主管簽章</p></div>
+            <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">管理部核發</p></div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Hidden printable area for past requests */}
+      <div className="absolute -left-[9999px] top-0 opacity-0 pointer-events-none">
+        <div ref={printPastRef} className="p-10 font-handwriting text-gray-800 w-[800px] bg-white">
+          <h1 className="text-3xl font-bold text-center mb-8 border-b-2 border-gray-800 pb-4">辦公室用品申請單</h1>
+          
+          <div className="flex justify-between mb-8 text-lg">
+            <div>
+              <p className="mb-2"><span className="font-bold">申請單號：</span> {printingRequest?.id}</p>
+              <p className="mb-2"><span className="font-bold">申請單位：</span> {printingRequest?.departmentName}</p>
+              <p><span className="font-bold">申請人員：</span> {printingRequest?.applicantName}</p>
+            </div>
+            <div>
+              <p><span className="font-bold">申請日期：</span> {printingRequest?.createdAt?.toDate ? printingRequest.createdAt.toDate().toLocaleDateString('zh-TW') : ''}</p>
+            </div>
+          </div>
+
+          <table className="w-full text-left border-collapse mb-10 text-lg">
+            <thead>
+              <tr>
+                <th className="border-b-2 border-gray-800 py-2 w-16">項次</th>
+                <th className="border-b-2 border-gray-800 py-2">物品名稱</th>
+                <th className="border-b-2 border-gray-800 py-2 text-right">數量</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printingRequest?.items.map((item, index) => (
+                <tr key={index}>
                   <td className="border-b border-gray-300 py-3">{index + 1}</td>
                   <td className="border-b border-gray-300 py-3">{item.name}</td>
                   <td className="border-b border-gray-300 py-3 text-right">{item.quantity}</td>
