@@ -107,7 +107,7 @@ export default function ReportPage() {
   ].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const filteredUnified = unifiedData.filter(item => {
-    if (docType !== 'All' && item.type !== docType) return false;
+    if (docType !== 'All' && item.type !== (docType === 'requests' ? 'request' : 'procurement')) return false;
     
     if (item.type === 'request') {
       const r = item.data as RequestRecord;
