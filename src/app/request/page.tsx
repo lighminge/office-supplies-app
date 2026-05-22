@@ -219,7 +219,7 @@ export default function RequestPage() {
       };
       
       await setDoc(doc(db, 'requests', serial), newReqData);
-      alert('申請單已成功送出！✨ 即將為您產生列印檔...'); 
+      // alert('申請單已成功送出！✨ 即將為您產生列印檔...'); 
       
       const createdReq = { ...newReqData, createdAt: { toDate: () => new Date() } } as unknown as RequestRecord;
       triggerPrintRequest(createdReq);
@@ -443,6 +443,8 @@ export default function RequestPage() {
                               <span className="bg-green-100 text-green-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">已核可</span>
                             ) : req.status === 'purchasing' ? (
                               <span className="bg-orange-100 text-orange-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">採購中</span>
+                            ) : req.status === 'pending-restock' ? (
+                              <span className="bg-purple-100 text-purple-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">待入庫</span>
                             ) : req.status === 'restocked' ? (
                               <span className="bg-blue-100 text-blue-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">已入庫</span>
                             ) : (
