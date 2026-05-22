@@ -507,7 +507,7 @@ export default function WorkflowPage() {
                             </button>
                           )}
                           <button 
-                            onClick={() => handleConfirmReceive(req.id)} 
+                            onClick={() => handleConfirmReceive(req)} 
                             className="bg-sky-400 hover:bg-sky-500 text-white px-3 py-2 rounded-xl text-sm font-bold disabled:opacity-50 disabled:bg-gray-300 flex items-center gap-1" 
                             disabled={req.status === 'purchasing' || req.status === 'pending-restock'}
                           >
