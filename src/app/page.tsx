@@ -37,20 +37,20 @@ export default function Home() {
           <p className="text-sm text-gray-500">管理辦公室用品、類別及可愛插圖</p>
         </Link>
 
-        <Link href="/organization" className="group block p-6 bg-white/80 backdrop-blur-sm rounded-3xl border-2 border-sky-100 hover:border-sky-300 hover:shadow-xl hover:shadow-sky-100 transition-all hover:-translate-y-2 text-center">
-          <div className="w-16 h-16 mx-auto bg-sky-100 text-sky-500 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-            <Users className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">單位及人員資料</h2>
-          <p className="text-sm text-gray-500">管理公司各部門單位與員工資料</p>
-        </Link>
-
         <Link href="/report" className="group block p-6 bg-white/80 backdrop-blur-sm rounded-3xl border-2 border-sky-100 hover:border-sky-300 hover:shadow-xl hover:shadow-sky-100 transition-all hover:-translate-y-2 text-center">
           <div className="w-16 h-16 mx-auto bg-sky-100 text-sky-500 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
             <BarChart3 className="w-8 h-8" />
           </div>
           <h2 className="text-xl font-bold text-gray-800 mb-2">統計報表</h2>
           <p className="text-sm text-gray-500">依據日期區間與類別，查詢申請統計</p>
+        </Link>
+
+        <Link href="/organization" className="group block p-6 bg-white/80 backdrop-blur-sm rounded-3xl border-2 border-sky-100 hover:border-sky-300 hover:shadow-xl hover:shadow-sky-100 transition-all hover:-translate-y-2 text-center">
+          <div className="w-16 h-16 mx-auto bg-sky-100 text-sky-500 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
+            <Users className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">單位及人員資料</h2>
+          <p className="text-sm text-gray-500">管理公司各部門單位與員工資料</p>
         </Link>
       </div>
     </main>
