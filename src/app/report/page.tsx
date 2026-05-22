@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, BarChart3, Search, Filter, Printer, Download, PieChart, BarChart as BarChartIcon, LineChart as LineChartIcon, Table as TableIcon } from 'lucide-react';
+import { ArrowLeft, BarChart3, Search, Filter, Printer, Download, PieChart as PieChartIcon, BarChart as BarChartIcon, LineChart as LineChartIcon, Table as TableIcon } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { Category, RequestRecord, ProcurementRecord, Department, Personnel, OfficeSupply } from '@/types';
@@ -220,7 +220,7 @@ export default function ReportPage() {
           <Search className="w-5 h-5" /> 資料清單
         </button>
         <button onClick={() => setActiveTab('chart')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-colors ${activeTab === 'chart' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}>
-          <PieChart className="w-5 h-5" /> 統計圖表
+          <PieChartIcon className="w-5 h-5" /> 統計圖表
         </button>
       </div>
 
@@ -292,7 +292,7 @@ export default function ReportPage() {
                   <label className="block text-sm font-bold text-gray-700 mb-2">圖表呈現方式</label>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => setChartType('table')} className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-bold ${chartType === 'table' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-600'}`}><TableIcon className="w-4 h-4"/> 表格</button>
-                    <button onClick={() => setChartType('pie')} className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-bold ${chartType === 'pie' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-600'}`}><PieChart className="w-4 h-4"/> 圓餅圖</button>
+                    <button onClick={() => setChartType('pie')} className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-bold ${chartType === 'pie' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-600'}`}><PieChartIcon className="w-4 h-4"/> 圓餅圖</button>
                     <button onClick={() => setChartType('bar')} className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-bold ${chartType === 'bar' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-600'}`}><BarChartIcon className="w-4 h-4"/> 長條圖</button>
                     <button onClick={() => setChartType('line')} className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-bold ${chartType === 'line' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-600'}`}><LineChartIcon className="w-4 h-4"/> 折線圖</button>
                   </div>

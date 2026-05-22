@@ -190,10 +190,18 @@ export default function WorkflowPage() {
     if (req.status === 'purchasing' || req.status === 'pending-restock') {
       return alert('這筆申請單的物品尚未完成採購入庫，暫時無法領用！');
     }
+    
+    // Check if any item has insufficient stock
+    for (const item of req.items) {
+      const supply = supplies.find(s => s.id === item.supplyId);
+      if (!supply || supply.quantity < item.quantity) {
+        return alert(`領用失敗！物品「${item.name}」目前庫存不足。`);
+      }
+    }
+
     requestAction('確認領用後，將自動扣除對應物品的庫存數量，並將狀態標為「已完成」，確定執行嗎？', async () => {
       try {
         await confirmReceiveLogic(req.id);
-        alert('領用成功！已扣除庫存。');
         fetchData();
       } catch (e: any) { alert('處理失敗：' + e.message); }
     });
@@ -206,6 +214,20 @@ export default function WorkflowPage() {
     });
     
     if (validSelections.length === 0) return alert('請先勾選可領用的申請單！(採購中或待入庫的單據無法領用)');
+    
+    // Check stock for all selected
+    for (const id of validSelections) {
+      const req = requests.find(r => r.id === id);
+      if (req) {
+        for (const item of req.items) {
+          const supply = supplies.find(s => s.id === item.supplyId);
+          if (!supply || supply.quantity < item.quantity) {
+             return alert(`領用失敗！申請單 ${req.id} 內的物品「${item.name}」目前庫存不足，請先取消勾選該單據。`);
+          }
+        }
+      }
+    }
+
     if (validSelections.length !== selectedApproved.length) {
       alert(`已幫您自動略過 ${selectedApproved.length - validSelections.length} 筆尚未入庫的單據。`);
     }
@@ -214,7 +236,6 @@ export default function WorkflowPage() {
       try {
         await Promise.all(validSelections.map(id => confirmReceiveLogic(id)));
         setSelectedApproved([]);
-        alert('批次領用成功！已扣除庫存。');
         fetchData();
       } catch (e: any) { alert('批次處理失敗：' + e.message); }
     });
@@ -377,12 +398,21 @@ export default function WorkflowPage() {
                       <td className="py-4 text-gray-800">{req.applicantName}</td>
                       <td className="py-4">
                         <ul className="space-y-1">
-                          {req.items.map((item, idx) => (
-                            <li key={idx} className="text-sm">
-                              <span className="text-gray-700">{item.name}</span>
-                              <span className="text-sky-500 ml-2 font-bold">x{item.quantity}</span>
-                            </li>
-                          ))}
+                          {req.items.map((item, idx) => {
+                            const supply = supplies.find(s => s.id === item.supplyId);
+                            const currentStock = supply ? supply.quantity : 0;
+                            const isLowStock = currentStock < item.quantity;
+                            return (
+                              <li key={idx} className="text-sm flex items-center gap-1">
+                                <span className="text-gray-700">{item.name}</span>
+                                <span className="text-sky-500 ml-1 font-bold">x{item.quantity}</span>
+                                <span className={`text-xs ml-2 px-2 py-0.5 rounded-full font-bold ${isLowStock ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+                                  (庫存: {currentStock})
+                                </span>
+                                {isLowStock && <span className="text-xs text-red-500 font-bold ml-1 animate-pulse">庫存不足!</span>}
+                              </li>
+                            );
+                          })}
                         </ul>
                       </td>
                       <td className="py-4 text-right pr-4">
@@ -480,12 +510,21 @@ export default function WorkflowPage() {
                       <td className="py-4 text-gray-800">{req.applicantName}</td>
                       <td className="py-4">
                         <ul className="space-y-1">
-                          {req.items.map((item, idx) => (
-                            <li key={idx} className="text-sm">
-                              <span className="text-gray-700">{item.name}</span>
-                              <span className="text-sky-500 ml-2 font-bold">x{item.quantity}</span>
-                            </li>
-                          ))}
+                          {req.items.map((item, idx) => {
+                            const supply = supplies.find(s => s.id === item.supplyId);
+                            const currentStock = supply ? supply.quantity : 0;
+                            const isLowStock = currentStock < item.quantity;
+                            return (
+                              <li key={idx} className="text-sm flex items-center gap-1">
+                                <span className="text-gray-700">{item.name}</span>
+                                <span className="text-sky-500 ml-1 font-bold">x{item.quantity}</span>
+                                <span className={`text-xs ml-2 px-2 py-0.5 rounded-full font-bold ${isLowStock ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+                                  (庫存: {currentStock})
+                                </span>
+                                {isLowStock && <span className="text-xs text-red-500 font-bold ml-1 animate-pulse">庫存不足!</span>}
+                              </li>
+                            );
+                          })}
                         </ul>
                       </td>
                       <td className="py-4">
@@ -509,7 +548,10 @@ export default function WorkflowPage() {
                           <button 
                             onClick={() => handleConfirmReceive(req)} 
                             className="bg-sky-400 hover:bg-sky-500 text-white px-3 py-2 rounded-xl text-sm font-bold disabled:opacity-50 disabled:bg-gray-300 flex items-center gap-1" 
-                            disabled={req.status === 'purchasing' || req.status === 'pending-restock'}
+                            disabled={req.status === 'purchasing' || req.status === 'pending-restock' || req.items.some(item => {
+                              const supply = supplies.find(s => s.id === item.supplyId);
+                              return !supply || supply.quantity < item.quantity;
+                            })}
                           >
                             <Package className="w-4 h-4" /> 物品領用
                           </button>
@@ -517,12 +559,6 @@ export default function WorkflowPage() {
                             <RotateCcw className="w-4 h-4" />
                           </button>
                           <button onClick={() => handleDelete(req.id)} disabled={req.status === 'purchasing' || req.status === 'pending-restock' || req.status === 'restocked'} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-red-50" title="取消申請(刪除)">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleRevert(req.id)} disabled={req.status === 'purchasing' || req.status === 'restocked'} className="bg-gray-100 hover:bg-gray-200 text-gray-600 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-gray-100" title="退回到申請單">
-                            <RotateCcw className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleDelete(req.id)} disabled={req.status === 'purchasing' || req.status === 'restocked'} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-red-50" title="取消申請(刪除)">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
