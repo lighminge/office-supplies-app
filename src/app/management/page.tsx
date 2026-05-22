@@ -164,7 +164,7 @@ export default function ManagementPage() {
 
   // Load from purchasing requests automatically
   useEffect(() => {
-    if (activeTab === 'procurement' && procItems.length === 0 && purchasingRequests.length > 0) {
+    if (activeTab === 'procurement' && procItems.length === 0 && purchasingRequests.length > 0 && !editingHistoryProcId) {
       const aggregated: Record<string, { name: string, quantity: number }> = {};
       purchasingRequests.forEach(req => {
         req.items.forEach(item => {
@@ -183,7 +183,22 @@ export default function ManagementPage() {
       });
       setProcItems(newProcItems);
     }
-  }, [activeTab, purchasingRequests]);
+  }, [activeTab, purchasingRequests, editingHistoryProcId]);
+
+  // Clear procurement draft state when leaving procurement tab
+  useEffect(() => {
+    if (activeTab !== 'procurement') {
+      setProcDate('');
+      setProcLocation('');
+      setProcItems([]);
+      setProcCatId('');
+      setProcSupplyId('');
+      setProcQty(1);
+      setProcPrice(0);
+      setEditingProcSupplyId('');
+      setEditingHistoryProcId('');
+    }
+  }, [activeTab]);
 
   const handleAddProcItem = () => {
     const qty = Number(procQty) || 0;
@@ -239,7 +254,6 @@ export default function ManagementPage() {
             totalAmount,
             updatedAt: serverTimestamp()
           });
-          alert('採購單修改成功！');
         } else {
           const serial = await getNextSerial('PROC');
           await setDoc(doc(db, 'procurements', serial), {
@@ -251,7 +265,13 @@ export default function ManagementPage() {
             isRestocked: false,
             createdAt: serverTimestamp()
           });
-          alert('採購單建立成功！');
+          
+          // 更新原本在 purchasing 狀態的 requests 為 pending-restock (待入庫)
+          const reqSnap = await getDocs(collection(db, 'requests'));
+          const purchasingReqs = reqSnap.docs.filter(doc => doc.data().status === 'purchasing');
+          for (const r of purchasingReqs) {
+            await updateDoc(doc(db, 'requests', r.id), { status: 'pending-restock' });
+          }
         }
         setProcDate(''); setProcLocation(''); setProcItems([]); 
         setProcCatId(''); setProcSupplyId(''); setProcQty(1); setProcPrice(0); setEditingProcSupplyId('');
@@ -276,10 +296,10 @@ export default function ManagementPage() {
         await updateDoc(doc(db, 'procurements', proc.id), { isRestocked: true, restockDate: date });
       }
 
-      // Update purchasing requests to restocked
+      // Update pending-restock requests to restocked
       const reqSnap = await getDocs(collection(db, 'requests'));
-      const purchasingReqs = reqSnap.docs.filter(doc => doc.data().status === 'purchasing');
-      for (const r of purchasingReqs) {
+      const pendingRestockReqs = reqSnap.docs.filter(doc => doc.data().status === 'pending-restock');
+      for (const r of pendingRestockReqs) {
         await updateDoc(doc(db, 'requests', r.id), { status: 'restocked' });
       }
 

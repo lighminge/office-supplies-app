@@ -114,7 +114,11 @@ export default function RequestPage() {
     }
     setCurrentItemId(''); setCurrentQty(1); setIsAddItemModalOpen(false);
   };
-  const handleRemoveItem = (id: string) => setSelectedItems(selectedItems.filter(item => item.supplyId !== id));
+  const handleRemoveItem = (id: string) => {
+    requestAction('確定要從申請清單中刪除這項物品嗎？', () => {
+      setSelectedItems(prev => prev.filter(item => item.supplyId !== id));
+    }, '確認刪除', 'bg-red-400 hover:bg-red-500 shadow-red-200');
+  };
 
   // Edit Flow
   const handleEditReq = (req: RequestRecord) => {
@@ -148,7 +152,6 @@ export default function RequestPage() {
         }));
         await updateDoc(doc(db, 'requests', editingReq.id), { items: cleanItems });
         setEditingReq(null);
-        alert('修改成功！');
         fetchData();
       } catch (e: any) { alert('儲存失敗：' + e.message); }
     });

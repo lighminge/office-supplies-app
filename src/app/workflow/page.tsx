@@ -104,7 +104,6 @@ export default function WorkflowPage() {
         }));
         await updateDoc(doc(db, 'requests', editingReq.id), { items: cleanItems });
         setEditingReq(null);
-        alert('修改成功！');
         fetchData();
       } catch (e: any) { alert('儲存失敗：' + e.message); }
     }, '確認修改', 'bg-sky-500 hover:bg-sky-600 shadow-sky-200');
@@ -188,8 +187,8 @@ export default function WorkflowPage() {
   };
 
   const handleConfirmReceive = (req: RequestRecord) => {
-    if (req.status === 'purchasing') {
-      return alert('這筆申請單正在採購中，需等待採購完成入庫後才可以領用！');
+    if (req.status === 'purchasing' || req.status === 'pending-restock') {
+      return alert('這筆申請單的物品尚未完成採購入庫，暫時無法領用！');
     }
     requestAction('確認領用後，將自動扣除對應物品的庫存數量，並將狀態標為「已完成」，確定執行嗎？', async () => {
       try {
@@ -203,12 +202,12 @@ export default function WorkflowPage() {
   const handleBulkConfirmReceive = () => {
     const validSelections = selectedApproved.filter(id => {
       const r = requests.find(req => req.id === id);
-      return r && r.status !== 'purchasing';
+      return r && r.status !== 'purchasing' && r.status !== 'pending-restock';
     });
     
-    if (validSelections.length === 0) return alert('請先勾選可領用的申請單！(採購中的單據無法領用)');
+    if (validSelections.length === 0) return alert('請先勾選可領用的申請單！(採購中或待入庫的單據無法領用)');
     if (validSelections.length !== selectedApproved.length) {
-      alert(`已幫您自動略過 ${selectedApproved.length - validSelections.length} 筆正在「採購中」的單據。`);
+      alert(`已幫您自動略過 ${selectedApproved.length - validSelections.length} 筆尚未入庫的單據。`);
     }
 
     requestAction(`確認領用後，將自動扣除這 ${validSelections.length} 筆申請單對應物品的庫存數量，確定執行嗎？`, async () => {
@@ -222,7 +221,7 @@ export default function WorkflowPage() {
   };
 
   const pendingRequests = requests.filter(r => !r.status || r.status === 'pending');
-  const approvedRequests = requests.filter(r => r.status === 'approved' || r.status === 'purchasing' || r.status === 'restocked');
+  const approvedRequests = requests.filter(r => r.status === 'approved' || r.status === 'purchasing' || r.status === 'pending-restock' || r.status === 'restocked');
 
   const totalPendingPages = Math.ceil(pendingRequests.length / itemsPerPage) || 1;
   const totalApprovedPages = Math.ceil(approvedRequests.length / itemsPerPage) || 1;
@@ -492,6 +491,8 @@ export default function WorkflowPage() {
                       <td className="py-4">
                         {req.status === 'purchasing' ? (
                           <span className="bg-orange-100 text-orange-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">採購中</span>
+                        ) : req.status === 'pending-restock' ? (
+                          <span className="bg-purple-100 text-purple-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">待入庫</span>
                         ) : req.status === 'restocked' ? (
                           <span className="bg-blue-100 text-blue-600 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">已入庫</span>
                         ) : (
@@ -506,11 +507,17 @@ export default function WorkflowPage() {
                             </button>
                           )}
                           <button 
-                            onClick={() => handleConfirmReceive(req)} 
+                            onClick={() => handleConfirmReceive(req.id)} 
                             className="bg-sky-400 hover:bg-sky-500 text-white px-3 py-2 rounded-xl text-sm font-bold disabled:opacity-50 disabled:bg-gray-300 flex items-center gap-1" 
-                            disabled={req.status === 'purchasing'}
+                            disabled={req.status === 'purchasing' || req.status === 'pending-restock'}
                           >
                             <Package className="w-4 h-4" /> 物品領用
+                          </button>
+                          <button onClick={() => handleRevert(req.id)} disabled={req.status === 'purchasing' || req.status === 'pending-restock' || req.status === 'restocked'} className="bg-gray-100 hover:bg-gray-200 text-gray-600 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-gray-100" title="退回到申請單">
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(req.id)} disabled={req.status === 'purchasing' || req.status === 'pending-restock' || req.status === 'restocked'} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-red-50" title="取消申請(刪除)">
+                            <Trash2 className="w-4 h-4" />
                           </button>
                           <button onClick={() => handleRevert(req.id)} disabled={req.status === 'purchasing' || req.status === 'restocked'} className="bg-gray-100 hover:bg-gray-200 text-gray-600 p-2 rounded-xl text-sm disabled:opacity-50 disabled:hover:bg-gray-100" title="退回到申請單">
                             <RotateCcw className="w-4 h-4" />
