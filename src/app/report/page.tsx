@@ -14,7 +14,7 @@ import { jsPDF } from 'jspdf';
 type TabType = 'list' | 'chart';
 type ChartType = 'table' | 'pie' | 'bar' | 'line';
 
-const COLORS = ['#0ea5e9', '#f43f5e', '#8b5cf6', '#10b981', '#f59e0b', '#6366f1', '#ec4899'];
+const COLORS = ['#0ea5e9', '#f43f5e', '#8b5cf6', '#10b981', '#f59e0b', '#8b5cf6', '#6366f1', '#ec4899'];
 
 export default function ReportPage() {
   const getTodayStr = () => new Date().toISOString().split('T')[0];
@@ -211,7 +211,6 @@ export default function ReportPage() {
 
       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 md:p-8 shadow-sm border-2 border-sky-100 mb-8">
         <h2 className="text-lg font-bold text-sky-700 mb-4 flex items-center gap-2 border-b-2 border-sky-50 pb-2"><Filter className="w-5 h-5"/> 查詢條件</h2>
-        
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">單據類型</label>
@@ -388,7 +387,7 @@ export default function ReportPage() {
                 <p className="text-gray-500 mt-3 font-bold text-lg">統計區間：{startDate} 至 {endDate}</p>
              </div>
              {chartData.length > 0 && chartType !== 'table' ? (
-                <div className="h-[500px]">
+               <div className="h-[500px]">
                   <ResponsiveContainer width="100%" height="100%">
                     {chartType === 'pie' ? (
                       <PieChart>
@@ -400,7 +399,7 @@ export default function ReportPage() {
                           const res = [];
                           if (includeQuantity) res.push(`數量: ${item.quantity}`);
                           if (includeAmount) res.push(`金額: $${item.amount}`);
-                          return [res.join(' / '), '數據'];
+                          return [res.join(' / '), '統計數據'];
                         }} />
                         <Legend />
                       </PieChart>
@@ -415,19 +414,6 @@ export default function ReportPage() {
                         {includeAmount && <Bar dataKey="amount" fill="#f43f5e" name="總金額 ($)" radius={[6, 6, 0, 0]} />}
                       </BarChart>
                     ) : (
-                      <LineChart data={chartData} margin={{bottom: 50}}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={80}/>
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        {includeQuantity && <Line type="monotone" dataKey="quantity" stroke="#0ea5e9" strokeWidth={4} name="總數量" dot={{ r: 6 }} />}
-                        {includeAmount && <Line type="monotone" dataKey="amount" stroke="#f43f5e" strokeWidth={4} name="總金額 ($)" dot={{ r: 6 }} />}
-                      </LineChart>
-                    )}
-                  </ResponsiveContainer>
-               </div>
-             ) : (
                       <LineChart data={chartData} margin={{bottom: 50}}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" angle={-45} textAnchor="end" height={80}/>
@@ -509,11 +495,11 @@ export default function ReportPage() {
                 <tbody>
                   {printingData.data.items.map((item: any, index: number) => (
                     <tr key={index}>
-                      <td className="border-2 border-orange-100 py-4 text-center">{index + 1}</td>
-                      <td className="border-2 border-orange-100 py-4 px-4 font-bold">{item.name}</td>
-                      <td className="border-2 border-orange-100 py-4 px-4 text-right text-gray-600">${item.unitPrice.toLocaleString()}</td>
-                      <td className="border-2 border-orange-100 py-4 px-4 text-right font-bold">{item.quantity}</td>
-                      <td className="border-2 border-orange-100 py-4 px-4 text-right font-black text-orange-600">${(item.unitPrice * item.quantity).toLocaleString()}</td>
+                      <td className="border-b border-gray-300 py-3">{index + 1}</td>
+                      <td className="border-b border-gray-300 py-3">{item.name}</td>
+                      <td className="border-b border-gray-300 py-3">${item.unitPrice}</td>
+                      <td className="border-b border-gray-300 py-3 text-right">{item.quantity}</td>
+                      <td className="border-b border-gray-300 py-3 text-right font-bold">${item.unitPrice * item.quantity}</td>
                     </tr>
                   ))}
                 </tbody>
