@@ -218,7 +218,13 @@ export default function ReportPage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" />
           </div>
-          <button onClick={generateReport} className="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 h-[44px]">
+          {docType === 'procurements' || docType === 'All' ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">採買地點</label>
+              <input type="text" value={procLocationFilter} onChange={e => setProcLocationFilter(e.target.value)} placeholder="地點關鍵字..." className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" />
+            </div>
+          ) : null}
+          <button onClick={generateReport} className="w-full bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 h-[44px]">
             <Search className="w-4 h-4" /> 載入資料
           </button>
         </div>
@@ -258,12 +264,6 @@ export default function ReportPage() {
                   </select>
                 </div>
               </>
-            )}
-            {docType === 'procurements' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">採買地點</label>
-                <input type="text" value={procLocationFilter} onChange={e => setProcLocationFilter(e.target.value)} placeholder="地點關鍵字..." className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" />
-              </div>
             )}
             <div className="lg:col-span-2">
                <label className="block text-sm font-medium text-gray-700 mb-1">關鍵字搜尋 (單號、物品名稱)</label>

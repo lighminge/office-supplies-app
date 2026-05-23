@@ -459,7 +459,7 @@ export default function RequestPage() {
                                   <button onClick={() => handleDeleteRequest(req.id)} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100" title="刪除"><Trash2 className="w-4 h-4" /></button>
                                 </>
                               )}
-                              <button onClick={() => triggerPrintPastRequest(req)} className="p-2 bg-sky-50 text-sky-500 rounded-lg hover:bg-sky-100" title="補列印申請單"><Printer className="w-4 h-4" /></button>
+                              <button onClick={() => { setPrintingRequest(req); setTimeout(handlePrintPastRequest, 100); }} className="p-2 bg-sky-50 text-sky-500 rounded-lg hover:bg-sky-100" title="列印申請單"><Printer className="w-4 h-4" /></button>
                             </div>
                           </td>
                         </tr>
