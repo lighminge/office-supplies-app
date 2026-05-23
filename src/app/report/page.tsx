@@ -407,7 +407,7 @@ export default function ReportPage() {
       </div>
 
       {/* Hidden printable area */}
-      <div className="absolute -left-[9999px] top-0 opacity-0 pointer-events-none">
+      <div style={{ display: 'none' }}>
         <div ref={printRef} className="p-10 font-handwriting text-gray-800 w-[800px] bg-white">
           {printingData?.type === 'request' ? (
             <>

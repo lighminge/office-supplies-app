@@ -513,7 +513,7 @@ export default function RequestPage() {
       </div>
 
       {/* Hidden printable area */}
-      <div className="absolute -left-[9999px] top-0 opacity-0 pointer-events-none">
+      <div style={{ display: 'none' }}>
         <div ref={printRef} className="p-10 font-handwriting text-gray-800 w-[800px] bg-white">
           <h1 className="text-3xl font-bold text-center mb-8 border-b-2 border-gray-800 pb-4">辦公室用品申請單</h1>
           
@@ -556,7 +556,7 @@ export default function RequestPage() {
       </div>
       
       {/* Hidden printable area for past requests */}
-      <div className="absolute -left-[9999px] top-0 opacity-0 pointer-events-none">
+      <div style={{ display: 'none' }}>
         <div ref={printPastRef} className="p-10 font-handwriting text-gray-800 w-[800px] bg-white">
           <h1 className="text-3xl font-bold text-center mb-8 border-b-2 border-gray-800 pb-4">辦公室用品申請單</h1>
           
