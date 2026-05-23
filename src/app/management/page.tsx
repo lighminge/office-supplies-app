@@ -248,21 +248,22 @@ export default function ManagementPage() {
   const handleAddBulkProcItems = () => {
     if (bulkSelectedSupplies.length === 0) return alert('請先勾選要加入的品項！');
     
-    let newItems = [...procItems];
-    bulkSelectedSupplies.forEach(id => {
-      const supply = supplies.find(s => s.id === id);
-      if (!supply) return;
-      
-      const existing = newItems.find(i => i.supplyId === id);
-      if (existing) {
-        newItems = newItems.map(i => i.supplyId === id ? { ...i, quantity: i.quantity + 1 } : i);
-      } else {
-        newItems.push({ supplyId: id, name: supply.name, quantity: 1, unitPrice: supply.price || 0 });
-      }
-    });
-    setProcItems(newItems);
-    setBulkSelectedSupplies([]);
-    alert('已成功批次加入採購明細！');
+    requestAction(`確定要將這 ${bulkSelectedSupplies.length} 項物品加入到下方的採購清單中嗎？系統將自動帶入設定單價。`, () => {
+      let newItems = [...procItems];
+      bulkSelectedSupplies.forEach(id => {
+        const supply = supplies.find(s => s.id === id);
+        if (!supply) return;
+        
+        const existing = newItems.find(i => i.supplyId === id);
+        if (existing) {
+          newItems = newItems.map(i => i.supplyId === id ? { ...i, quantity: i.quantity + 1 } : i);
+        } else {
+          newItems.push({ supplyId: id, name: supply.name, quantity: 1, unitPrice: supply.price || 0 });
+        }
+      });
+      setProcItems(newItems);
+      setBulkSelectedSupplies([]);
+    }, '確認加入', 'bg-orange-500 hover:bg-orange-600 shadow-orange-200');
   };
 
   const handleSelectLowStock = () => {
@@ -439,16 +440,18 @@ export default function ManagementPage() {
         )}
       </header>
 
-      <div className="flex gap-4 mb-6 overflow-x-auto pb-2 custom-scrollbar">
+      <div className="flex gap-4 mb-6 overflow-x-auto pb-4 pt-2 px-1 custom-scrollbar">
         <button onClick={() => setActiveTab('supplies')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'supplies' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}><Package className="w-5 h-5" /> 物品管理</button>
         <button onClick={() => setActiveTab('categories')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'categories' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}><Tag className="w-5 h-5" /> 物品類別</button>
         <button onClick={() => setActiveTab('icons')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'icons' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}><ImageIcon className="w-5 h-5" /> 插圖管理</button>
         <button onClick={() => setActiveTab('procurement')} className={`relative flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'procurement' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}>
           <ShoppingCart className="w-5 h-5" /> 物品採買
           {purchasingRequests.length > 0 && (
-            <span className="absolute -top-2 -right-2 flex h-5 w-5">
+            <span className="absolute -top-1 -right-1 flex h-5 w-5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-5 w-5 bg-orange-500 text-[10px] text-white items-center justify-center border-2 border-white shadow-sm">{purchasingRequests.length}</span>
+              <span className="relative inline-flex rounded-full h-5 w-5 bg-orange-500 text-[10px] text-white items-center justify-center border-2 border-white shadow-sm font-bold">
+                {purchasingRequests.length}
+              </span>
             </span>
           )}
         </button>
