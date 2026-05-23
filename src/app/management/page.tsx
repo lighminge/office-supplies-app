@@ -440,16 +440,16 @@ export default function ManagementPage() {
         )}
       </header>
 
-      <div className="flex gap-4 mb-6 overflow-x-auto pb-4 pt-2 px-1 custom-scrollbar">
+      <div className="flex gap-4 mb-6 overflow-x-auto pb-6 pt-3 px-2 custom-scrollbar">
         <button onClick={() => setActiveTab('supplies')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'supplies' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}><Package className="w-5 h-5" /> 物品管理</button>
         <button onClick={() => setActiveTab('categories')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'categories' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}><Tag className="w-5 h-5" /> 物品類別</button>
         <button onClick={() => setActiveTab('icons')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'icons' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}><ImageIcon className="w-5 h-5" /> 插圖管理</button>
         <button onClick={() => setActiveTab('procurement')} className={`relative flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'procurement' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}>
           <ShoppingCart className="w-5 h-5" /> 物品採買
           {purchasingRequests.length > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-5 w-5">
+            <span className="absolute -top-1.5 -right-1.5 flex h-6 w-6">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-5 w-5 bg-orange-500 text-[10px] text-white items-center justify-center border-2 border-white shadow-sm font-bold">
+              <span className="relative inline-flex rounded-full h-6 w-6 bg-orange-500 text-[10px] text-white items-center justify-center border-2 border-white shadow-sm font-black">
                 {purchasingRequests.length}
               </span>
             </span>

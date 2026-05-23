@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, BarChart3, Search, Filter, Printer, PieChart as PieChartIcon, BarChart as BarChartIcon, LineChart as LineChartIcon, Table as TableIcon, Download } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
-import { Category, RequestRecord, ProcurementRecord, Department, Personnel, OfficeSupply, AppIcon } from '@/types';
+import { Category, RequestRecord, ProcurementRecord, Department, Personnel, OfficeSupply } from '@/types';
 import { useReactToPrint } from 'react-to-print';
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import html2canvas from 'html2canvas';
@@ -14,7 +14,7 @@ import { jsPDF } from 'jspdf';
 type TabType = 'list' | 'chart';
 type ChartType = 'table' | 'pie' | 'bar' | 'line';
 
-const COLORS = ['#0ea5e9', '#f43f5e', '#8b5cf6', '#10b981', '#f59e0b', '#8b5cf6', '#6366f1', '#ec4899'];
+const COLORS = ['#0ea5e9', '#f43f5e', '#8b5cf6', '#10b981', '#f59e0b', '#6366f1', '#ec4899'];
 
 export default function ReportPage() {
   const getTodayStr = () => new Date().toISOString().split('T')[0];
@@ -210,7 +210,8 @@ export default function ReportPage() {
       </div>
 
       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 md:p-8 shadow-sm border-2 border-sky-100 mb-8">
-        <h2 className="text-lg font-bold text-sky-700 mb-4 flex items-center gap-2 border-b-2 border-sky-50 pb-2"><Filter className="w-5 h-5"/> 共通查詢與載入條件</h2>
+        <h2 className="text-lg font-bold text-sky-700 mb-4 flex items-center gap-2 border-b-2 border-sky-50 pb-2"><Filter className="w-5 h-5"/> 查詢條件</h2>
+        
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">單據類型</label>
@@ -228,17 +229,24 @@ export default function ReportPage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" />
           </div>
-          <button onClick={generateReport} className="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 h-[44px]">
-            <Search className="w-4 h-4" /> 載入區間資料
+          {(docType === 'procurements' || docType === 'All') && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">採買地點</label>
+              <input type="text" value={procLocationFilter} onChange={e => setProcLocationFilter(e.target.value)} placeholder="地點關鍵字..." className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" />
+            </div>
+          )}
+          <button onClick={generateReport} className="w-full bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 h-[44px]">
+            <Search className="w-4 h-4" /> 載入資料
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 border-t-2 border-dashed border-sky-100 pt-6">
+        {activeTab === 'list' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end mb-6 border-t-2 border-dashed border-sky-100 pt-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">單據狀態</label>
               <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300">
                 <option value="All">全部狀態</option>
-                {(docType === 'requests' || docType === 'All') && (
+                {docType === 'requests' || docType === 'All' ? (
                   <>
                     <option value="pending">未核可</option>
                     <option value="approved">已核可</option>
@@ -247,8 +255,7 @@ export default function ReportPage() {
                     <option value="restocked">已入庫</option>
                     <option value="completed">已領用(結案)</option>
                   </>
-                )}
-                {docType === 'procurements' && (
+                ) : (
                   <>
                     <option value="pending">待入庫</option>
                     <option value="restocked">已入庫</option>
@@ -259,14 +266,14 @@ export default function ReportPage() {
             {docType !== 'procurements' && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">單位</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">申請單位</label>
                   <select value={selectedDeptId} onChange={e => {setSelectedDeptId(e.target.value); setSelectedPersonId('All');}} className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300">
                     <option value="All">全部單位</option>
                     {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">人員</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">申請人員</label>
                   <select value={selectedPersonId} onChange={e => setSelectedPersonId(e.target.value)} className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300">
                     <option value="All">全部人員</option>
                     {filteredPersonnelList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -274,23 +281,18 @@ export default function ReportPage() {
                 </div>
               </>
             )}
-            {(docType === 'procurements' || docType === 'All') && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">採買地點</label>
-                <input type="text" value={procLocationFilter} onChange={e => setProcLocationFilter(e.target.value)} placeholder="地點搜尋..." className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" />
-              </div>
-            )}
             <div className="lg:col-span-2">
-               <label className="block text-sm font-medium text-gray-700 mb-1">關鍵字搜尋</label>
-               <input type="text" value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="單號、物品名稱..." className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" />
+               <label className="block text-sm font-medium text-gray-700 mb-1">關鍵字搜尋 (單號、物品名稱)</label>
+               <input type="text" value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="輸入關鍵字..." className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" />
             </div>
-        </div>
+          </div>
+        )}
 
         {activeTab === 'chart' && (
-          <div className="border-t-2 border-dashed border-sky-100 mt-6 pt-6">
+          <div className="border-t-2 border-dashed border-sky-100 pt-6">
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">圖表數據切換</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">圖表數據設定</label>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => setChartType('table')} className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-bold ${chartType === 'table' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-600'}`}><TableIcon className="w-4 h-4"/> 表格</button>
                     <button onClick={() => setChartType('pie')} className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-bold ${chartType === 'pie' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-600'}`}><PieChartIcon className="w-4 h-4"/> 圓餅圖</button>
@@ -298,16 +300,24 @@ export default function ReportPage() {
                     <button onClick={() => setChartType('line')} className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-bold ${chartType === 'line' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-600'}`}><LineChartIcon className="w-4 h-4"/> 折線圖</button>
                   </div>
                   <div className="flex gap-4 mt-4">
-                    <label className="flex items-center gap-2 font-bold text-gray-700 cursor-pointer"><input type="checkbox" checked={includeQuantity} onChange={e => setIncludeQuantity(e.target.checked)} className="w-4 h-4 rounded" /> 統計數量</label>
-                    <label className="flex items-center gap-2 font-bold text-gray-700 cursor-pointer"><input type="checkbox" checked={includeAmount} onChange={e => setIncludeAmount(e.target.checked)} className="w-4 h-4 rounded" /> 統計金額</label>
+                    <label className="flex items-center gap-2 font-bold text-gray-700 cursor-pointer">
+                      <input type="checkbox" checked={includeQuantity} onChange={e => setIncludeQuantity(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-sky-500 focus:ring-sky-500" />
+                      統計數量
+                    </label>
+                    <label className="flex items-center gap-2 font-bold text-gray-700 cursor-pointer">
+                      <input type="checkbox" checked={includeAmount} onChange={e => setIncludeAmount(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-sky-500 focus:ring-sky-500" />
+                      統計金額
+                    </label>
                   </div>
                 </div>
                 <div className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">1. 選擇類別 (必選)</label>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">1. 選擇類別 (可複選)</label>
                     <div className="max-h-24 overflow-y-auto border border-sky-100 rounded-xl p-2 bg-gray-50 flex flex-wrap gap-2">
                        {categories.map(c => (
-                         <label key={c.id} className="flex items-center gap-1 text-xs bg-white border px-2 py-1 rounded cursor-pointer"><input type="checkbox" checked={selectedCatIds.includes(c.id)} onChange={e => { if(e.target.checked) setSelectedCatIds([...selectedCatIds, c.id]); else { setSelectedCatIds(selectedCatIds.filter(id => id !== c.id)); setSelectedSupplyIds([]); } }} /> {c.name}</label>
+                         <label key={c.id} className="flex items-center gap-1 text-xs bg-white border px-2 py-1 rounded cursor-pointer">
+                           <input type="checkbox" checked={selectedCatIds.includes(c.id)} onChange={e => { if(e.target.checked) setSelectedCatIds([...selectedCatIds, c.id]); else { setSelectedCatIds(selectedCatIds.filter(id => id !== c.id)); setSelectedSupplyIds([]); } }} /> {c.name}
+                         </label>
                        ))}
                     </div>
                   </div>
@@ -315,7 +325,9 @@ export default function ReportPage() {
                     <label className="block text-sm font-bold text-gray-700 mb-2">2. 選擇指定物品 (需先選類別)</label>
                     <div className="max-h-24 overflow-y-auto border border-sky-100 rounded-xl p-2 bg-gray-50 flex flex-wrap gap-2">
                        {chartFilteredSupplies.length > 0 ? chartFilteredSupplies.map(s => (
-                         <label key={s.id} className="flex items-center gap-1 text-xs bg-white border px-2 py-1 rounded cursor-pointer"><input type="checkbox" checked={selectedSupplyIds.includes(s.id)} onChange={e => { if(e.target.checked) setSelectedSupplyIds([...selectedSupplyIds, s.id]); else setSelectedSupplyIds(selectedSupplyIds.filter(id => id !== s.id)); }} /> {s.name}</label>
+                         <label key={s.id} className="flex items-center gap-1 text-xs bg-white border px-2 py-1 rounded cursor-pointer">
+                           <input type="checkbox" checked={selectedSupplyIds.includes(s.id)} onChange={e => { if(e.target.checked) setSelectedSupplyIds([...selectedSupplyIds, s.id]); else setSelectedSupplyIds(selectedSupplyIds.filter(id => id !== s.id)); }} /> {s.name}
+                         </label>
                        )) : <span className="text-xs text-gray-400 p-1">請先勾選上方類別喔！</span>}
                     </div>
                   </div>
@@ -351,8 +363,8 @@ export default function ReportPage() {
                              <><span className="text-2xl font-black text-sky-600">{(item.data as RequestRecord).applicantName}</span><br/><span className="text-xs text-gray-400">{(item.data as RequestRecord).departmentName}</span></>
                            ) : <span className="font-bold text-gray-700">{(item.data as ProcurementRecord).location}</span>}
                         </td>
-                        <td className="py-4 text-xs">{(item.data as any).items.map((it:any, idx:number) => <div key={idx}>{it.name} <span className="text-sky-500 font-bold">x{it.quantity}</span></div>)}</td>
-                        <td className="py-4 text-right pr-2"><button onClick={() => triggerPrint(item.type, item.data)} className="p-2 bg-sky-50 text-sky-500 rounded-lg hover:bg-sky-100 transition-colors"><Printer className="w-5 h-5" /></button></td>
+                        <td className="py-4 text-xs">{(item.data as any).items.map((it:any, idx:number) => <div key={idx}>{it.name} <span className="text-sky-600 font-bold">x{it.quantity}</span></div>)}</td>
+                        <td className="py-4 text-right pr-2"><button onClick={() => triggerPrint(item.type, item.data)} className="p-2 bg-sky-50 text-sky-500 rounded-lg hover:bg-sky-100 transition-colors"><Printer className="w-4 h-4" /></button></td>
                       </tr>
                     )
                   })}
@@ -376,14 +388,20 @@ export default function ReportPage() {
                 <p className="text-gray-500 mt-3 font-bold text-lg">統計區間：{startDate} 至 {endDate}</p>
              </div>
              {chartData.length > 0 && chartType !== 'table' ? (
-               <div className="h-[500px]">
+                <div className="h-[500px]">
                   <ResponsiveContainer width="100%" height="100%">
                     {chartType === 'pie' ? (
                       <PieChart>
-                        <Pie data={chartData} dataKey={includeAmount ? 'amount' : 'quantity'} nameKey="name" cx="50%" cy="50%" outerRadius={150} label={({ name, value }) => `${name}: ${includeAmount ? '$'+value : value}`} stroke="none">
+                        <Pie data={chartData} dataKey={includeAmount && !includeQuantity ? 'amount' : 'quantity'} nameKey="name" cx="50%" cy="50%" outerRadius={150} label={({ name, value }) => `${name}: ${includeAmount && !includeQuantity ? '$'+value : value}`} stroke="none">
                            {chartData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                         </Pie>
-                        <Tooltip />
+                        <Tooltip formatter={(value: any, name: any, props: any) => {
+                          const item = props.payload;
+                          const res = [];
+                          if (includeQuantity) res.push(`數量: ${item.quantity}`);
+                          if (includeAmount) res.push(`金額: $${item.amount}`);
+                          return [res.join(' / '), '數據'];
+                        }} />
                         <Legend />
                       </PieChart>
                     ) : chartType === 'bar' ? (
@@ -410,25 +428,17 @@ export default function ReportPage() {
                   </ResponsiveContainer>
                </div>
              ) : (
-                          <LineChart data={chartData} margin={{bottom: 50}}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" angle={-45} textAnchor="end" height={80}/><YAxis /><Tooltip /><Legend /><Line type="monotone" dataKey="quantity" stroke="#0ea5e9" strokeWidth={4} name="總數量" dot={{ r: 6 }} /></LineChart>
-                        )}
-                      </ResponsiveContainer>
-                   </div>
-                 )}
-                 {includeAmount && (
-                   <div className="min-h-[450px] mt-8 border-t-4 border-dashed border-sky-50 pt-12">
-                      <h4 className="text-center font-bold text-rose-600 mb-6 text-xl bg-rose-50 py-2 rounded-full inline-block px-10 mx-auto border border-rose-100">💰 物品申請與採購金額統計</h4>
-                      <ResponsiveContainer width="100%" height={400}>
-                        {chartType === 'pie' ? (
-                          <PieChart><Pie data={chartData} dataKey="amount" nameKey="name" cx="50%" cy="50%" outerRadius={130} label={({ name, value }) => `${name}: $${value}`} stroke="none">{chartData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip /><Legend /></PieChart>
-                        ) : chartType === 'bar' ? (
-                          <BarChart data={chartData} margin={{bottom: 50}}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" angle={-45} textAnchor="end" height={80}/><YAxis /><Tooltip /><Legend /><Bar dataKey="amount" fill="#f43f5e" name="總金額 ($)" radius={[6, 6, 0, 0]} /></BarChart>
-                        ) : (
-                          <LineChart data={chartData} margin={{bottom: 50}}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" angle={-45} textAnchor="end" height={80}/><YAxis /><Tooltip /><Legend /><Line type="monotone" dataKey="amount" stroke="#f43f5e" strokeWidth={4} name="總金額 ($)" dot={{ r: 6 }} /></LineChart>
-                        )}
-                      </ResponsiveContainer>
-                   </div>
-                 )}
+                      <LineChart data={chartData} margin={{bottom: 50}}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={80}/>
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        {includeQuantity && <Line type="monotone" dataKey="quantity" stroke="#0ea5e9" strokeWidth={4} name="總數量" dot={{ r: 6 }} />}
+                        {includeAmount && <Line type="monotone" dataKey="amount" stroke="#f43f5e" strokeWidth={4} name="總金額 ($)" dot={{ r: 6 }} />}
+                      </LineChart>
+                    )}
+                  </ResponsiveContainer>
                </div>
              ) : (
                <div className="overflow-hidden rounded-2xl border-2 border-sky-100">
@@ -443,7 +453,7 @@ export default function ReportPage() {
                          {includeAmount && <td className="py-4 text-right pr-6 text-rose-500 font-black text-xl">${d.amount.toLocaleString()}</td>}
                        </tr>
                      ))}
-                     {chartData.length === 0 && <tr><td colSpan={4} className="text-center py-20 text-gray-400 font-bold">目前區間與過濾條件下無任何數據 📭</td></tr>}
+                     {chartData.length === 0 && <tr><td colSpan={4} className="text-center py-20 text-gray-400 font-bold">目前條件下無數據 📭</td></tr>}
                    </tbody>
                  </table>
                </div>
@@ -453,7 +463,7 @@ export default function ReportPage() {
       </div>
 
       {/* Hidden printable area */}
-      <div className="absolute -left-[9999px] top-0 opacity-0 pointer-events-none">
+      <div className="absolute -left-[9999px] top-0 opacity-0 pointer-events-none text-black">
         <div ref={printRef} className="p-10 font-handwriting text-gray-800 w-[800px] bg-white">
           {printingData?.type === 'request' ? (
             <>
