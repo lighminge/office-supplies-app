@@ -201,51 +201,14 @@ export default function ReportPage() {
 
       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 md:p-8 shadow-sm border-2 border-sky-100 mb-8">
         <h2 className="text-lg font-bold text-sky-700 mb-4 flex items-center gap-2 border-b-2 border-sky-50 pb-2"><Filter className="w-5 h-5"/> 查詢條件</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end mb-6 border-t-2 border-dashed border-sky-100 pt-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">單據狀態</label>
-              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300">
-                <option value="All">全部狀態</option>
-                {docType === 'requests' || docType === 'All' ? (
-                  <>
-                    <option value="pending">未核可</option>
-                    <option value="approved">已核可</option>
-                    <option value="purchasing">採購中</option>
-                    <option value="pending-restock">待入庫(申請)</option>
-                    <option value="restocked">已入庫</option>
-                    <option value="completed">已領用(結案)</option>
-                  </>
-                ) : null}
-              </select>
-            </div>
-            {docType !== 'procurements' && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">申請單位</label>
-                  <select value={selectedDeptId} onChange={e => {setSelectedDeptId(e.target.value); setSelectedPersonId('All');}} className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300">
-                    <option value="All">全部單位</option>
-                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">申請人員</label>
-                  <select value={selectedPersonId} onChange={e => setSelectedPersonId(e.target.value)} className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300">
-                    <option value="All">全部人員</option>
-                    {filteredPersonnel.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
-              </>
-            )}
-            {docType === 'procurements' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">採買地點</label>
-                <input type="text" value={procLocationFilter} onChange={e => setProcLocationFilter(e.target.value)} placeholder="地點關鍵字..." className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" />
-              </div>
-            )}
-            <div className="lg:col-span-2">
-               <label className="block text-sm font-medium text-gray-700 mb-1">關鍵字搜尋</label>
-               <input type="text" value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="單號、物品名稱..." className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" />
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end mb-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">單據類型</label>
+            <select value={docType} onChange={e => {setDocType(e.target.value as any); setStatusFilter('All');}} className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300">
+              <option value="All">全部類型</option>
+              <option value="requests">申請單</option>
+              <option value="procurements">採購單</option>
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">開始日期</label>
