@@ -320,7 +320,16 @@ export default function ReportPage() {
                     <button onClick={() => setChartType('bar')} className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-bold ${chartType === 'bar' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-600'}`}><BarChartIcon className="w-4 h-4"/> 長條圖</button>
                     <button onClick={() => setChartType('line')} className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-bold ${chartType === 'line' ? 'bg-sky-500 text-white' : 'bg-gray-100 text-gray-600'}`}><LineChartIcon className="w-4 h-4"/> 折線圖</button>
                   </div>
-                  <label className="flex items-center gap-2 mt-4 font-bold text-gray-700"><input type="checkbox" checked={includeAmount} onChange={e => setIncludeAmount(e.target.checked)} className="w-4 h-4" /> 統計金額</label>
+                  <div className="flex gap-4 mt-4">
+                    <label className="flex items-center gap-2 font-bold text-gray-700 cursor-pointer">
+                      <input type="checkbox" checked={includeQuantity} onChange={e => setIncludeQuantity(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-sky-500 focus:ring-sky-500" />
+                      統計數量
+                    </label>
+                    <label className="flex items-center gap-2 font-bold text-gray-700 cursor-pointer">
+                      <input type="checkbox" checked={includeAmount} onChange={e => setIncludeAmount(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-sky-500 focus:ring-sky-500" />
+                      統計金額
+                    </label>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-4">
                   <div>
@@ -377,17 +386,64 @@ export default function ReportPage() {
             </table>
           </div>
         ) : (
-          <div ref={chartRef} className="p-4">
+          <div ref={chartRef} className="p-6 bg-white">
+             <div className="text-center mb-6">
+                <h3 className="text-2xl font-bold text-gray-800">統計圖表報告</h3>
+                <p className="text-gray-500 mt-2">統計區間：{startDate} 至 {endDate}</p>
+             </div>
              {chartData.length > 0 && chartType !== 'table' ? (
                <ResponsiveContainer width="100%" height={400}>
-                 {chartType === 'pie' ? <PieChart><Pie data={chartData} dataKey={includeAmount ? 'amount' : 'quantity'} nameKey="name" cx="50%" cy="50%" outerRadius={100} label>{chartData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip /><Legend /></PieChart> : 
-                  chartType === 'bar' ? <BarChart data={chartData}><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey={includeAmount ? 'amount' : 'quantity'} fill="#0ea5e9" /></BarChart> :
-                  <LineChart data={chartData}><XAxis dataKey="name" /><YAxis /><Tooltip /><Line type="monotone" dataKey={includeAmount ? 'amount' : 'quantity'} stroke="#f43f5e" /></LineChart>}
+                 {chartType === 'pie' ? (
+                   <PieChart>
+                     <Pie data={chartData} dataKey={includeAmount && !includeQuantity ? 'amount' : 'quantity'} nameKey="name" cx="50%" cy="50%" outerRadius={120} label>
+                       {chartData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                     </Pie>
+                     <Tooltip />
+                     <Legend />
+                   </PieChart>
+                 ) : chartType === 'bar' ? (
+                   <BarChart data={chartData}>
+                     <CartesianGrid strokeDasharray="3 3" />
+                     <XAxis dataKey="name" />
+                     <YAxis />
+                     <Tooltip />
+                     <Legend />
+                     {includeQuantity && <Bar dataKey="quantity" fill="#0ea5e9" name="數量" />}
+                     {includeAmount && <Bar dataKey="amount" fill="#f43f5e" name="金額" />}
+                   </BarChart>
+                 ) : (
+                   <LineChart data={chartData}>
+                     <CartesianGrid strokeDasharray="3 3" />
+                     <XAxis dataKey="name" />
+                     <YAxis />
+                     <Tooltip />
+                     <Legend />
+                     {includeQuantity && <Line type="monotone" dataKey="quantity" stroke="#0ea5e9" name="數量" />}
+                     {includeAmount && <Line type="monotone" dataKey="amount" stroke="#f43f5e" name="金額" />}
+                   </LineChart>
+                 )}
                </ResponsiveContainer>
              ) : (
-               <table className="w-full text-left">
-                 <thead><tr><th>物品</th><th>{includeAmount ? '金額' : '數量'}</th></tr></thead>
-                 <tbody>{chartData.map((d, i) => <tr key={i}><td>{d.name}</td><td>{includeAmount ? `$${d.amount}` : d.quantity}</td></tr>)}</tbody>
+               <table className="w-full text-left border-collapse">
+                 <thead>
+                   <tr className="border-b-2 border-gray-200">
+                     <th className="py-2">排名</th>
+                     <th className="py-2">物品名稱</th>
+                     {includeQuantity && <th className="py-2 text-right">數量</th>}
+                     {includeAmount && <th className="py-2 text-right">總金額</th>}
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {chartData.map((d, i) => (
+                     <tr key={i} className="border-b border-gray-100">
+                       <td className="py-2 text-gray-500 font-bold">{i+1}</td>
+                       <td className="py-2 font-bold">{d.name}</td>
+                       {includeQuantity && <td className="py-2 text-right text-sky-600 font-bold">{d.quantity}</td>}
+                       {includeAmount && <td className="py-2 text-right text-rose-500 font-bold">${d.amount}</td>}
+                     </tr>
+                   ))}
+                   {chartData.length === 0 && <tr><td colSpan={4} className="text-center py-10 text-gray-400">無統計資料</td></tr>}
+                 </tbody>
                </table>
              )}
           </div>
