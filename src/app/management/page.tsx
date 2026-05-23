@@ -157,6 +157,9 @@ export default function ManagementPage() {
   const [procSupplyId, setProcSupplyId] = useState('');
   const [procQty, setProcQty] = useState<number | string>(1);
   const [procPrice, setProcPrice] = useState<number | string>(0);
+  const [procAddMode, setProcAddMode] = useState<'single' | 'bulk'>('single');
+  const [bulkSelectedSupplies, setBulkSelectedSupplies] = useState<string[]>([]);
+  const [procHistoryStatusFilter, setProcHistoryStatusFilter] = useState('All');
 
   // Edit logic for procurement items
   const [editingProcSupplyId, setEditingProcSupplyId] = useState('');
@@ -233,6 +236,7 @@ export default function ManagementPage() {
       setProcQty(item.quantity);
       setProcPrice(item.unitPrice);
       setEditingProcSupplyId(item.supplyId);
+      setProcAddMode('single');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -240,6 +244,32 @@ export default function ManagementPage() {
   const handleRemoveProcItem = (id: string) => requestAction('確定要從採購清單中移除這個品項嗎？', async () => {
     setProcItems(prev => prev.filter(i => i.supplyId !== id));
   }, '確定刪除');
+
+  const handleAddBulkProcItems = () => {
+    if (bulkSelectedSupplies.length === 0) return alert('請先勾選要加入的品項！');
+    
+    let newItems = [...procItems];
+    bulkSelectedSupplies.forEach(id => {
+      const supply = supplies.find(s => s.id === id);
+      if (!supply) return;
+      
+      const existing = newItems.find(i => i.supplyId === id);
+      if (existing) {
+        newItems = newItems.map(i => i.supplyId === id ? { ...i, quantity: i.quantity + 1 } : i);
+      } else {
+        newItems.push({ supplyId: id, name: supply.name, quantity: 1, unitPrice: supply.price || 0 });
+      }
+    });
+    setProcItems(newItems);
+    setBulkSelectedSupplies([]);
+    alert('已成功批次加入採購明細！');
+  };
+
+  const handleSelectLowStock = () => {
+    const lowStockIds = procFilteredSupplies.filter(s => s.quantity < s.minQuantity).map(s => s.id);
+    if (lowStockIds.length === 0) return alert('目前類別沒有低於安全存量的物品！');
+    setBulkSelectedSupplies(prev => Array.from(new Set([...prev, ...lowStockIds])));
+  };
 
   const handleSaveProcurement = async () => {
     if (!procDate || !procLocation || procItems.length === 0) return alert('請填寫日期、地點並至少加入一項物品！');
@@ -354,6 +384,8 @@ export default function ManagementPage() {
   const filteredProcurements = procurements.filter(p => {
     if (procStartDate && p.date < procStartDate) return false;
     if (procEndDate && p.date > procEndDate) return false;
+    if (procHistoryStatusFilter === 'pending' && p.isRestocked) return false;
+    if (procHistoryStatusFilter === 'restocked' && !p.isRestocked) return false;
     return true;
   });
 
@@ -411,7 +443,15 @@ export default function ManagementPage() {
         <button onClick={() => setActiveTab('supplies')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'supplies' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}><Package className="w-5 h-5" /> 物品管理</button>
         <button onClick={() => setActiveTab('categories')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'categories' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}><Tag className="w-5 h-5" /> 物品類別</button>
         <button onClick={() => setActiveTab('icons')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'icons' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}><ImageIcon className="w-5 h-5" /> 插圖管理</button>
-        <button onClick={() => setActiveTab('procurement')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'procurement' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}><ShoppingCart className="w-5 h-5" /> 物品採買</button>
+        <button onClick={() => setActiveTab('procurement')} className={`relative flex items-center gap-2 px-6 py-3 rounded-2xl font-bold whitespace-nowrap transition-colors ${activeTab === 'procurement' ? 'bg-sky-500 text-white shadow-md' : 'bg-white text-sky-500 hover:bg-sky-50 border border-sky-100'}`}>
+          <ShoppingCart className="w-5 h-5" /> 物品採買
+          {purchasingRequests.length > 0 && (
+            <span className="absolute -top-2 -right-2 flex h-5 w-5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-5 w-5 bg-orange-500 text-[10px] text-white items-center justify-center border-2 border-white shadow-sm">{purchasingRequests.length}</span>
+            </span>
+          )}
+        </button>
       </div>
 
       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 md:p-8 shadow-sm border-2 border-sky-100">
@@ -576,33 +616,86 @@ export default function ManagementPage() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl p-4 border border-orange-100 mb-6">
-                <h3 className="font-bold text-gray-700 mb-3 text-sm">加入或編輯採買品項</h3>
-                <div className="flex flex-col md:flex-row gap-2 items-end">
-                  <div className="flex-1">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">物品類別</label>
-                    <select value={procCatId} onChange={e => {setProcCatId(e.target.value); setProcSupplyId('');}} className="w-full rounded-xl border-2 border-orange-100 px-3 py-2">
-                      <option value="">-- 先選物品類別 --</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="flex-[2]">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">物品名稱</label>
-                    <select value={procSupplyId} onChange={e => setProcSupplyId(e.target.value)} disabled={!procCatId} className="w-full rounded-xl border-2 border-orange-100 px-3 py-2 disabled:opacity-50">
-                      <option value="">-- 再選物品名稱 --</option>
-                      {procFilteredSupplies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="w-24">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">採買數量</label>
-                    <input type="number" placeholder="數量" value={procQty} onChange={e => setProcQty(e.target.value === '' ? '' : parseInt(e.target.value))} min="1" className="w-full rounded-xl border-2 border-orange-100 px-3 py-2" />
-                  </div>
-                  <div className="w-32">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">單價 (元)</label>
-                    <input type="number" placeholder="單價($)" value={procPrice} onChange={e => setProcPrice(e.target.value === '' ? '' : parseInt(e.target.value))} min="0" className="w-full rounded-xl border-2 border-orange-100 px-3 py-2" />
-                  </div>
-                  <button onClick={handleAddProcItem} className="bg-orange-400 hover:bg-orange-500 text-white px-6 py-2 rounded-xl font-bold whitespace-nowrap h-[44px]">儲存品項</button>
-                  {editingProcSupplyId && <button onClick={() => {setEditingProcSupplyId(''); setProcCatId(''); setProcSupplyId('');}} className="bg-gray-100 text-gray-600 px-4 py-2 rounded-xl font-bold h-[44px]">取消</button>}
+              <div className="bg-white rounded-xl border border-orange-100 mb-6 overflow-hidden">
+                <div className="flex bg-orange-50 border-b border-orange-100">
+                  <button onClick={() => setProcAddMode('single')} className={`flex-1 py-3 text-sm font-bold transition-colors ${procAddMode === 'single' ? 'bg-white text-orange-600 border-t-[3px] border-t-orange-500' : 'text-gray-500 hover:text-orange-500 hover:bg-orange-100/50'}`}>單筆加入/編輯</button>
+                  <button onClick={() => setProcAddMode('bulk')} className={`flex-1 py-3 text-sm font-bold transition-colors ${procAddMode === 'bulk' ? 'bg-white text-orange-600 border-t-[3px] border-t-orange-500' : 'text-gray-500 hover:text-orange-500 hover:bg-orange-100/50'}`}>批次加入品項</button>
+                </div>
+                
+                <div className="p-4">
+                  {procAddMode === 'single' ? (
+                    <div className="flex flex-col md:flex-row gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">物品類別</label>
+                        <select value={procCatId} onChange={e => {setProcCatId(e.target.value); setProcSupplyId('');}} className="w-full rounded-xl border-2 border-orange-100 px-3 py-2 focus:outline-none focus:border-orange-300">
+                          <option value="">-- 先選物品類別 --</option>
+                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex-[2]">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">物品名稱</label>
+                        <select value={procSupplyId} onChange={e => {
+                            setProcSupplyId(e.target.value);
+                            const supply = supplies.find(s => s.id === e.target.value);
+                            if (supply) setProcPrice(supply.price || 0);
+                          }} disabled={!procCatId} className="w-full rounded-xl border-2 border-orange-100 px-3 py-2 focus:outline-none focus:border-orange-300 disabled:opacity-50">
+                          <option value="">-- 再選物品名稱 --</option>
+                          {procFilteredSupplies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="w-24">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">採買數量</label>
+                        <input type="number" placeholder="數量" value={procQty} onChange={e => setProcQty(e.target.value === '' ? '' : parseInt(e.target.value))} min="1" className="w-full rounded-xl border-2 border-orange-100 px-3 py-2 focus:outline-none focus:border-orange-300" />
+                      </div>
+                      <div className="w-32">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">單價 (元)</label>
+                        <input type="number" placeholder="單價($)" value={procPrice} onChange={e => setProcPrice(e.target.value === '' ? '' : parseInt(e.target.value))} min="0" className="w-full rounded-xl border-2 border-orange-100 px-3 py-2 focus:outline-none focus:border-orange-300" />
+                      </div>
+                      <button onClick={handleAddProcItem} className="bg-orange-400 hover:bg-orange-500 text-white px-6 py-2 rounded-xl font-bold whitespace-nowrap h-[44px]">儲存品項</button>
+                      {editingProcSupplyId && <button onClick={() => {setEditingProcSupplyId(''); setProcCatId(''); setProcSupplyId('');}} className="bg-gray-100 text-gray-600 px-4 py-2 rounded-xl font-bold h-[44px]">取消</button>}
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex flex-col md:flex-row gap-4 mb-4 items-center border-b-2 border-dashed border-orange-50 pb-4">
+                        <div className="flex items-center gap-2 flex-1">
+                          <label className="text-sm font-bold text-gray-600 whitespace-nowrap">篩選類別：</label>
+                          <select value={procCatId} onChange={e => {setProcCatId(e.target.value); setBulkSelectedSupplies([]);}} className="w-full rounded-xl border-2 border-orange-100 px-3 py-2 focus:outline-none focus:border-orange-300">
+                            <option value="">全部類別</option>
+                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </div>
+                        <button onClick={handleSelectLowStock} className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 font-bold rounded-xl text-sm transition-colors border border-red-200">
+                          全選低於安全存量品項
+                        </button>
+                        <button onClick={handleAddBulkProcItems} disabled={bulkSelectedSupplies.length === 0} className="px-4 py-2 bg-orange-500 text-white hover:bg-orange-600 font-bold rounded-xl text-sm transition-colors disabled:opacity-50">
+                          批次加入 ({bulkSelectedSupplies.length})
+                        </button>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                        {procFilteredSupplies.map(s => {
+                          const isLowStock = s.quantity < s.minQuantity;
+                          return (
+                            <label key={s.id} className={`flex items-start gap-2 p-3 rounded-xl border-2 cursor-pointer transition-colors ${bulkSelectedSupplies.includes(s.id) ? 'bg-orange-50 border-orange-300' : 'bg-white border-gray-100 hover:border-orange-200'}`}>
+                              <input type="checkbox" className="mt-1 w-4 h-4 text-orange-500 rounded border-gray-300 focus:ring-orange-500" checked={bulkSelectedSupplies.includes(s.id)} onChange={e => {
+                                if(e.target.checked) setBulkSelectedSupplies([...bulkSelectedSupplies, s.id]);
+                                else setBulkSelectedSupplies(bulkSelectedSupplies.filter(id => id !== s.id));
+                              }} />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-bold text-gray-800 text-sm truncate">{s.name}</div>
+                                <div className="text-xs text-gray-500 mt-1">單價: ${s.price || 0}</div>
+                                <div className="flex justify-between items-center mt-1">
+                                  <span className="text-xs text-gray-500">庫存: {s.quantity}</span>
+                                  {isLowStock && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 rounded font-bold">低庫存</span>}
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                        {procFilteredSupplies.length === 0 && <div className="col-span-full py-6 text-center text-gray-400">目前沒有物品可供選擇</div>}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -663,6 +756,12 @@ export default function ManagementPage() {
                <input type="date" value={procStartDate} onChange={e => setProcStartDate(e.target.value)} className="rounded-xl border border-gray-200 px-3 py-1 outline-none"/>
                <span className="text-gray-400">至</span>
                <input type="date" value={procEndDate} onChange={e => setProcEndDate(e.target.value)} className="rounded-xl border border-gray-200 px-3 py-1 outline-none"/>
+               <span className="font-bold text-gray-600 ml-4">狀態：</span>
+               <select value={procHistoryStatusFilter} onChange={e => setProcHistoryStatusFilter(e.target.value)} className="rounded-xl border border-gray-200 px-3 py-1 outline-none">
+                 <option value="All">全部狀態</option>
+                 <option value="pending">待入庫</option>
+                 <option value="restocked">已入庫</option>
+               </select>
                <div className="flex-1"></div>
                <button onClick={() => openRestockModal()} disabled={selectedProcs.length === 0} className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl font-bold disabled:opacity-50 flex items-center gap-2">
                  <Package className="w-4 h-4"/> 批次入庫 ({selectedProcs.length})

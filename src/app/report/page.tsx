@@ -145,15 +145,8 @@ export default function ReportPage() {
   };
 
   const chartStats: Record<string, { name: string, quantity: number, amount: number }> = {};
-  requests.forEach(r => {
-    const stats = countItems(r.items, 'req');
-    Object.entries(stats).forEach(([name, data]) => {
-      if (!chartStats[name]) chartStats[name] = { name, quantity: 0, amount: 0 };
-      chartStats[name].quantity += data.quantity; chartStats[name].amount += data.amount;
-    });
-  });
-  procurements.forEach(p => {
-    const stats = countItems(p.items, 'proc');
+  filteredUnified.forEach(item => {
+    const stats = countItems(item.data.items, item.type === 'request' ? 'req' : 'proc');
     Object.entries(stats).forEach(([name, data]) => {
       if (!chartStats[name]) chartStats[name] = { name, quantity: 0, amount: 0 };
       chartStats[name].quantity += data.quantity; chartStats[name].amount += data.amount;
@@ -414,11 +407,65 @@ export default function ReportPage() {
       </div>
 
       {/* Hidden printable area */}
-      <div className="absolute -left-[9999px] top-0">
-         <div ref={printRef} className="p-10 font-handwriting w-[800px] bg-white">
-           <h1 className="text-3xl font-bold text-center mb-8">列印單據</h1>
-           {/* (Content to print based on printingData) */}
-         </div>
+      <div className="absolute -left-[9999px] top-0 opacity-0 pointer-events-none">
+        <div ref={printRef} className="p-10 font-handwriting text-gray-800 w-[800px] bg-white">
+          {printingData?.type === 'request' ? (
+            <>
+              <h1 className="text-3xl font-bold text-center mb-8 border-b-2 border-gray-800 pb-4">辦公室用品申請單</h1>
+              <div className="flex justify-between mb-8 text-lg">
+                <div>
+                  <p className="mb-2"><span className="font-bold">申請單號：</span> {printingData.data.id}</p>
+                  <p className="mb-2"><span className="font-bold">申請單位：</span> {printingData.data.departmentName}</p>
+                  <p><span className="font-bold">申請人員：</span> {printingData.data.applicantName}</p>
+                </div>
+                <div>
+                  <p><span className="font-bold">申請日期：</span> {printingData.data.createdAt?.toDate ? printingData.data.createdAt.toDate().toLocaleDateString('zh-TW') : ''}</p>
+                </div>
+              </div>
+              <table className="w-full text-left border-collapse mb-10 text-lg">
+                <thead><tr><th className="border-b-2 border-gray-800 py-2 w-16">項次</th><th className="border-b-2 border-gray-800 py-2">物品名稱</th><th className="border-b-2 border-gray-800 py-2 text-right">數量</th></tr></thead>
+                <tbody>
+                  {printingData.data.items.map((item: any, index: number) => (
+                    <tr key={index}><td className="border-b border-gray-300 py-3">{index + 1}</td><td className="border-b border-gray-300 py-3">{item.name}</td><td className="border-b border-gray-300 py-3 text-right">{item.quantity}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="flex justify-between mt-20 pt-10 text-lg">
+                <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">申請人簽章</p></div>
+                <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">單位主管簽章</p></div>
+                <div className="text-center w-48"><div className="border-b border-gray-800 pb-10"></div><p className="mt-2 font-bold">管理部核發</p></div>
+              </div>
+            </>
+          ) : printingData?.type === 'procurement' ? (
+            <>
+              <h1 className="text-3xl font-bold text-center mb-8 border-b-2 border-gray-800 pb-4">辦公室物品採購單</h1>
+              <div className="flex justify-between mb-8 text-lg">
+                <div>
+                  <p className="mb-2"><span className="font-bold">採購單號：</span> {printingData.data.id}</p>
+                  <p className="mb-2"><span className="font-bold">採買地點：</span> {printingData.data.location}</p>
+                </div>
+                <div>
+                  <p><span className="font-bold">採買日期：</span> {printingData.data.date}</p>
+                </div>
+              </div>
+              <table className="w-full text-left border-collapse mb-10 text-lg">
+                <thead><tr><th className="border-b-2 border-gray-800 py-2 w-16">項次</th><th className="border-b-2 border-gray-800 py-2">物品名稱</th><th className="border-b-2 border-gray-800 py-2">單價</th><th className="border-b-2 border-gray-800 py-2 text-right">數量</th><th className="border-b-2 border-gray-800 py-2 text-right">小計</th></tr></thead>
+                <tbody>
+                  {printingData.data.items.map((item: any, index: number) => (
+                    <tr key={index}>
+                      <td className="border-b border-gray-300 py-3">{index + 1}</td>
+                      <td className="border-b border-gray-300 py-3">{item.name}</td>
+                      <td className="border-b border-gray-300 py-3">${item.unitPrice}</td>
+                      <td className="border-b border-gray-300 py-3 text-right">{item.quantity}</td>
+                      <td className="border-b border-gray-300 py-3 text-right font-bold">${item.unitPrice * item.quantity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="text-right text-2xl font-bold mt-4">總金額：${printingData.data.totalAmount}</div>
+            </>
+          ) : null}
+        </div>
       </div>
     </main>
   );
