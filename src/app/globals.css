@@ -6,14 +6,41 @@
 
 :root {
   --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+@layer base {
+  body {
+    @apply selection:bg-sky-200 selection:text-sky-900;
   }
+}
+
+/* 專業且平滑的自定義捲軸 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-sky-200/50 rounded-full hover:bg-sky-300/80 transition-colors;
+}
+
+/* 全域背景漸層效果 */
+body {
+  background: radial-gradient(circle at top left, #f0f9ff 0%, #e0f2fe 100%);
+  min-height: 100vh;
+  background-attachment: fixed;
+}
+
+/* 玻璃擬態質感通用類別 */
+.glass-panel {
+  @apply bg-white/70 backdrop-blur-md border border-white/50 shadow-xl shadow-sky-100/30 rounded-[2rem];
+}
+
+/* 按鈕按壓效果 */
+.btn-pop {
+  @apply transition-transform active:scale-95 duration-200;
 }

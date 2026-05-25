@@ -1,58 +1,199 @@
+"use client";
+
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ClipboardList, Package, BarChart3, Users, Sparkles, LayoutList } from 'lucide-react';
+import { 
+  ClipboardList, 
+  Package, 
+  BarChart3, 
+  Users, 
+  Sparkles, 
+  LayoutList, 
+  ChevronRight, 
+  AlertCircle,
+  Clock,
+  CheckCircle2
+} from 'lucide-react';
+import { motion } from 'framer-motion';
+import { db } from '@/lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 export default function Home() {
+  const [stats, setStats] = useState({
+    lowStock: 0,
+    pendingReq: 0,
+    purchasingReq: 0,
+    totalSupplies: 0
+  });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const [supSnap, reqSnap] = await Promise.all([
+          getDocs(collection(db, 'supplies')),
+          getDocs(collection(db, 'requests'))
+        ]);
+        
+        const supplies = supSnap.docs.map(doc => doc.data());
+        const requests = reqSnap.docs.map(doc => doc.data());
+        
+        setStats({
+          lowStock: supplies.filter(s => s.quantity <= s.minQuantity).length,
+          pendingReq: requests.filter(r => r.status === 'pending').length,
+          purchasingReq: requests.filter(r => r.status === 'purchasing').length,
+          totalSupplies: supplies.length
+        });
+      } catch (e) {
+        console.error("Fetch stats error:", e);
+      }
+    };
+    fetchStats();
+  }, []);
+
+  const features = [
+    { href: "/request", title: "用品申請", desc: "選取單位與人員快速申請", icon: ClipboardList, color: "sky" },
+    { href: "/workflow", title: "單據流程", desc: "核可與領用進度追蹤", icon: LayoutList, color: "indigo" },
+    { href: "/management", title: "用品管理", desc: "庫存、類別與插圖維護", icon: Package, color: "blue" },
+    { href: "/report", title: "統計報表", desc: "視覺化數據與紀錄導出", icon: BarChart3, color: "violet" },
+    { href: "/organization", title: "單位人員", desc: "組織架構與成員管理", icon: Users, color: "cyan" },
+  ];
+
   return (
-    <main className="min-h-screen p-6 md:p-12 flex flex-col items-center justify-center">
-      <div className="text-center mb-12">
-        <h1 className="text-4xl md:text-5xl font-extrabold text-sky-500 flex items-center justify-center gap-3 mb-4">
-          <Sparkles className="text-yellow-400 w-10 h-10 animate-pulse" />
-          辦公室用具管理小幫手
-        </h1>
-        <p className="text-lg text-gray-500">請選擇您需要的功能 💙</p>
+    <main className="min-h-screen p-6 md:p-12 overflow-x-hidden">
+      {/* 頂部 Header */}
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-7xl mx-auto mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6"
+      >
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="bg-sky-500 p-2 rounded-2xl shadow-lg shadow-sky-200">
+              <Sparkles className="text-white w-6 h-6 animate-pulse" />
+            </div>
+            <h2 className="text-sky-600 font-bold tracking-widest text-sm uppercase">Office Supplies System</h2>
+          </div>
+          <h1 className="text-4xl md:text-5xl font-black text-gray-800 tracking-tight">
+            辦公室用具管理 <span className="text-sky-500">小幫手</span>
+          </h1>
+          <p className="text-gray-500 mt-4 text-lg">讓您的工作環境更有序、更有溫度 💙</p>
+        </div>
+
+        {/* 快速統計摘要 */}
+        <div className="flex flex-wrap gap-3">
+          <div className="bg-white/50 backdrop-blur-sm border border-white px-4 py-2 rounded-2xl flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-500" />
+            <span className="text-sm font-bold text-gray-700">{stats.lowStock} 項庫存告急</span>
+          </div>
+          <div className="bg-white/50 backdrop-blur-sm border border-white px-4 py-2 rounded-2xl flex items-center gap-2">
+            <Clock className="w-4 h-4 text-orange-500" />
+            <span className="text-sm font-bold text-gray-700">{stats.pendingReq} 筆待核可單據</span>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* 主儀表板區域 */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        {/* 左側：功能卡片網格 (佔 8 欄) */}
+        <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {features.map((f, i) => (
+            <motion.div
+              key={f.href}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.1 }}
+            >
+              <Link 
+                href={f.href} 
+                className="group relative block p-8 glass-panel hover:bg-white hover:border-sky-300 transition-all hover:shadow-2xl hover:shadow-sky-100 hover:-translate-y-2 overflow-hidden h-full"
+              >
+                {/* 背景裝飾圖案 */}
+                <div className={`absolute -right-4 -bottom-4 opacity-5 group-hover:scale-125 group-hover:opacity-10 transition-all text-${f.color}-500`}>
+                  <f.icon size={160} />
+                </div>
+
+                <div className={`w-14 h-14 bg-${f.color}-100 text-${f.color}-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
+                  <f.icon size={28} />
+                </div>
+                
+                <h3 className="text-2xl font-black text-gray-800 mb-2 flex items-center gap-2">
+                  {f.title}
+                  <ChevronRight className="w-5 h-5 text-gray-300 group-hover:translate-x-1 group-hover:text-sky-500 transition-all" />
+                </h3>
+                <p className="text-gray-500 leading-relaxed font-medium">{f.desc}</p>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* 右側：狀態看板 (佔 4 欄) */}
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.4 }}
+          className="lg:col-span-4 space-y-6"
+        >
+          <div className="glass-panel p-8">
+            <h3 className="text-xl font-black text-gray-800 mb-6 flex items-center gap-2">
+              <BarChart3 className="text-sky-500" size={20} />
+              目前系統概況
+            </h3>
+            
+            <div className="space-y-6">
+              <div className="flex items-center justify-between p-4 bg-sky-50 rounded-2xl border border-sky-100">
+                <div className="flex items-center gap-3">
+                  <Package className="text-sky-500" size={20} />
+                  <span className="font-bold text-gray-700">總物品種類</span>
+                </div>
+                <span className="text-2xl font-black text-sky-600">{stats.totalSupplies}</span>
+              </div>
+              
+              <div className="flex items-center justify-between p-4 bg-rose-50 rounded-2xl border border-rose-100">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="text-rose-500" size={20} />
+                  <span className="font-bold text-gray-700">庫存預警</span>
+                </div>
+                <span className="text-2xl font-black text-rose-600">{stats.lowStock}</span>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-orange-50 rounded-2xl border border-orange-100">
+                <div className="flex items-center gap-3">
+                  <Clock className="text-orange-500" size={20} />
+                  <span className="font-bold text-gray-700">採購進行中</span>
+                </div>
+                <span className="text-2xl font-black text-orange-600">{stats.purchasingReq}</span>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-green-50 rounded-2xl border border-green-100">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="text-green-500" size={20} />
+                  <span className="font-bold text-gray-700">待核可單據</span>
+                </div>
+                <span className="text-2xl font-black text-green-600">{stats.pendingReq}</span>
+              </div>
+            </div>
+
+            <button className="w-full mt-8 py-4 bg-sky-500 hover:bg-sky-600 text-white rounded-2xl font-black shadow-lg shadow-sky-100 transition-all hover:scale-105 active:scale-95">
+              快速系統檢查 🔍
+            </button>
+          </div>
+
+          <div className="glass-panel p-8 bg-sky-600 text-white relative overflow-hidden group">
+             <div className="relative z-10">
+               <h3 className="text-xl font-bold mb-2">需要幫忙嗎？</h3>
+               <p className="text-sky-100 text-sm mb-4">如果您在使用上有任何問題，可以聯繫系統管理員。</p>
+               <button className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-xs font-bold transition-colors">查看幫助手冊</button>
+             </div>
+             <Sparkles className="absolute right-[-10px] top-[-10px] w-32 h-32 opacity-10 rotate-12 group-hover:scale-110 transition-transform" />
+          </div>
+        </motion.div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 w-full max-w-7xl">
-        <Link href="/request" className="group block p-6 bg-white/80 backdrop-blur-sm rounded-3xl border-2 border-sky-100 hover:border-sky-300 hover:shadow-xl hover:shadow-sky-100 transition-all hover:-translate-y-2 text-center">
-          <div className="w-16 h-16 mx-auto bg-sky-100 text-sky-500 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-            <ClipboardList className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">用品申請</h2>
-          <p className="text-sm text-gray-500">選取單位、人員及物品，產生申請單</p>
-        </Link>
-
-        <Link href="/workflow" className="group block p-6 bg-white/80 backdrop-blur-sm rounded-3xl border-2 border-sky-100 hover:border-sky-300 hover:shadow-xl hover:shadow-sky-100 transition-all hover:-translate-y-2 text-center">
-          <div className="w-16 h-16 mx-auto bg-sky-100 text-sky-500 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-            <LayoutList className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">單據流程</h2>
-          <p className="text-sm text-gray-500">核可申請單並轉交採購與領用</p>
-        </Link>
-
-        <Link href="/management" className="group block p-6 bg-white/80 backdrop-blur-sm rounded-3xl border-2 border-sky-100 hover:border-sky-300 hover:shadow-xl hover:shadow-sky-100 transition-all hover:-translate-y-2 text-center">
-          <div className="w-16 h-16 mx-auto bg-sky-100 text-sky-500 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-            <Package className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">用品管理</h2>
-          <p className="text-sm text-gray-500">管理辦公室用品、類別及可愛插圖</p>
-        </Link>
-
-        <Link href="/report" className="group block p-6 bg-white/80 backdrop-blur-sm rounded-3xl border-2 border-sky-100 hover:border-sky-300 hover:shadow-xl hover:shadow-sky-100 transition-all hover:-translate-y-2 text-center">
-          <div className="w-16 h-16 mx-auto bg-sky-100 text-sky-500 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-            <BarChart3 className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">統計報表</h2>
-          <p className="text-sm text-gray-500">依據日期區間與類別，查詢申請統計</p>
-        </Link>
-
-        <Link href="/organization" className="group block p-6 bg-white/80 backdrop-blur-sm rounded-3xl border-2 border-sky-100 hover:border-sky-300 hover:shadow-xl hover:shadow-sky-100 transition-all hover:-translate-y-2 text-center">
-          <div className="w-16 h-16 mx-auto bg-sky-100 text-sky-500 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-            <Users className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">單位及人員資料</h2>
-          <p className="text-sm text-gray-500">管理公司各部門單位與員工資料</p>
-        </Link>
-      </div>
+      {/* 底部裝飾 */}
+      <footer className="max-w-7xl mx-auto mt-20 pb-8 text-center border-t border-sky-100 pt-8">
+        <p className="text-gray-400 text-sm font-medium">© 2026 可愛風辦公室用品管理系統 · Made with 💙</p>
+      </footer>
     </main>
   );
 }

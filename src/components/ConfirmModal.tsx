@@ -1,7 +1,8 @@
 "use client";
 
 import React from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -14,33 +15,64 @@ interface ConfirmModalProps {
 }
 
 export default function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, confirmText, confirmColor }: ConfirmModalProps) {
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-sky-100/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl p-6 md:p-8 max-w-sm w-full shadow-lg border-2 border-sky-100 animate-in zoom-in-95 duration-200">
-        <div className="flex items-center gap-3 mb-4 text-sky-500">
-          <div className="p-2 bg-sky-50 rounded-2xl">
-            <AlertCircle className="w-8 h-8" />
-          </div>
-          <h2 className="text-2xl font-bold">{title}</h2>
-        </div>
-        <p className="text-gray-600 mb-8 text-lg">{message}</p>
-        <div className="flex gap-3">
-          <button 
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          {/* 背景遮罩 */}
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             onClick={onCancel}
-            className="flex-1 px-4 py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold hover:bg-gray-50 transition-colors"
+            className="absolute inset-0 bg-sky-900/40 backdrop-blur-sm"
+          />
+
+          {/* 視窗本體 */}
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="relative bg-white rounded-[2.5rem] p-8 md:p-10 max-w-md w-full shadow-2xl border border-sky-100/50 overflow-hidden"
           >
-            取消
-          </button>
-          <button 
-            onClick={() => { onConfirm(); onCancel(); }}
-            className={`flex-1 px-4 py-3 rounded-2xl text-white font-bold transition-colors shadow-sm ${confirmColor || 'bg-red-400 hover:bg-red-500 shadow-red-200'}`}
-          >
-            {confirmText || '確定刪除'}
-          </button>
+            {/* 裝飾背景 */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-sky-50 rounded-bl-full -z-0 opacity-50" />
+
+            <div className="relative z-10">
+              <button 
+                onClick={onCancel}
+                className="absolute -top-2 -right-2 p-2 text-gray-400 hover:text-sky-500 hover:bg-sky-50 rounded-full transition-colors"
+              >
+                <X size={24} />
+              </button>
+
+              <div className="flex items-center gap-4 mb-6">
+                <div className="p-3 bg-sky-50 rounded-2xl shadow-inner">
+                  <AlertCircle className="w-10 h-10 text-sky-500" />
+                </div>
+                <h2 className="text-2xl font-black text-gray-800">{title}</h2>
+              </div>
+
+              <p className="text-gray-600 mb-10 text-lg leading-relaxed font-medium">{message}</p>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={onCancel}
+                  className="flex-1 px-4 py-4 rounded-2xl border-2 border-gray-100 text-gray-500 font-bold hover:bg-gray-50 transition-all active:scale-95"
+                >
+                  取消
+                </button>
+                <button 
+                  onClick={() => { onConfirm(); onCancel(); }}
+                  className={`flex-1 px-4 py-4 rounded-2xl text-white font-bold transition-all active:scale-95 shadow-lg ${confirmColor || 'bg-sky-500 hover:bg-sky-600 shadow-sky-100'}`}
+                >
+                  {confirmText || '確定執行'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
         </div>
-      </div>
-    </div>
+      )}
+    </AnimatePresence>
   );
 }
