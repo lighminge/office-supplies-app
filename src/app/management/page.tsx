@@ -394,8 +394,32 @@ export default function ManagementPage() {
                     <button onClick={handleAddProcItem} className="bg-orange-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-orange-600 transition-colors h-[44px]">儲存品項</button>
                   </div>
                 ) : (
-                  <div><div className="flex gap-2 mb-4 items-center"><select value={procCatId} onChange={e => setProcCatId(e.target.value)} className="rounded-xl border-2 border-orange-100 px-3 py-2 text-sm"><option value="">全部類別</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><button onClick={handleSelectLowStock} className="text-xs bg-red-50 text-red-600 font-bold px-3 py-2 rounded-lg border border-red-100">全選低庫存</button><button onClick={handleAddBulkProcItems} disabled={bulkSelectedSupplies.length === 0} className="text-xs bg-orange-500 text-white font-bold px-3 py-2 rounded-lg disabled:opacity-50">批次加入 ({bulkSelectedSupplies.length})</button></div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">{procFilteredSupplies.map(s => (<label key={s.id} className={`flex flex-col p-2 rounded-xl border-2 cursor-pointer transition-all ${bulkSelectedSupplies.includes(s.id) ? 'bg-orange-50 border-orange-400 scale-[0.98]' : 'bg-white border-gray-50'}`}><div className="flex gap-1 items-start"><input type="checkbox" checked={bulkSelectedSupplies.includes(s.id)} onChange={e => { if(e.target.checked) setBulkSelectedSupplies([...bulkSelectedSupplies, s.id]); else setBulkSelectedSupplies(bulkSelectedSupplies.filter(id => id !== s.id)); }} /><span className="text-xs font-bold truncate">{s.name}</span></div><div className="text-[10px] text-gray-400 mt-1">單價: ${s.price} | 庫存: {s.quantity}</div></label>))}</div></div>
+                  <div>
+                    <div className="flex flex-col md:flex-row gap-2 mb-4 items-center">
+                      <select value={procCatId} onChange={e => setProcCatId(e.target.value)} className="rounded-xl border-2 border-orange-100 px-3 py-2 text-sm">
+                        <option value="">全部類別</option>
+                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      <div className="flex-1"></div>
+                      <div className="flex gap-2 items-center bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-100">
+                        <span className="text-xs font-bold text-orange-600">已選取: {bulkSelectedSupplies.length} 項</span>
+                        <button onClick={() => setBulkSelectedSupplies([])} className="text-[10px] bg-white border border-orange-200 px-2 py-0.5 rounded-lg hover:bg-orange-100 text-orange-500 font-bold">全取消</button>
+                      </div>
+                      <button onClick={handleSelectLowStock} className="text-xs bg-red-50 text-red-600 font-bold px-3 py-2 rounded-lg border border-red-100 hover:bg-red-100 transition-colors">全選低庫存</button>
+                      <button onClick={handleAddBulkProcItems} disabled={bulkSelectedSupplies.length === 0} className="text-xs bg-orange-500 text-white font-bold px-3 py-2 rounded-lg disabled:opacity-50 hover:bg-orange-600 transition-colors">批次加入明細</button>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                      {procFilteredSupplies.map(s => (
+                        <label key={s.id} className={`flex flex-col p-2 rounded-xl border-2 cursor-pointer transition-all ${bulkSelectedSupplies.includes(s.id) ? 'bg-orange-50 border-orange-400 scale-[0.98]' : 'bg-white border-gray-50 hover:border-orange-200'}`}>
+                          <div className="flex gap-1 items-start">
+                            <input type="checkbox" checked={bulkSelectedSupplies.includes(s.id)} onChange={e => { if(e.target.checked) setBulkSelectedSupplies([...bulkSelectedSupplies, s.id]); else setBulkSelectedSupplies(bulkSelectedSupplies.filter(id => id !== s.id)); }} />
+                            <span className="text-xs font-bold truncate">{s.name}</span>
+                          </div>
+                          <div className="text-[10px] text-gray-400 mt-1">單價: ${s.price} | 庫存: {s.quantity}</div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 )}</div></div>
               {procItems.length > 0 && (<div className="bg-white rounded-2xl p-5 border border-orange-100 mb-6 shadow-sm animate-in zoom-in-95 duration-200"><table className="w-full text-left text-sm"><thead><tr className="border-b text-gray-400"><th className="pb-2 w-10">序號</th><th className="pb-2">名稱</th><th className="pb-2">數量</th><th className="pb-2">單價</th><th className="pb-2">小計</th><th className="pb-2 text-right">操作</th></tr></thead><tbody>{procItems.map((it, i) => (<tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-orange-50/30"><td className="py-2 text-gray-400">{i+1}</td><td className="py-2 font-bold">{it.name}</td><td className="py-2 text-orange-500 font-black">x{it.quantity}</td><td className="py-2">${it.unitPrice}</td><td className="py-2 font-bold text-gray-700">${(it.quantity*it.unitPrice).toLocaleString()}</td><td className="py-2 text-right"><button onClick={() => handleEditProcItem(it)} className="text-sky-500 p-1 mr-1 hover:scale-110 transition-transform"><Edit3 className="w-4 h-4"/></button><button onClick={() => handleRemoveProcItem(it.supplyId)} className="text-red-400 p-1 hover:scale-110 transition-transform"><Trash2 className="w-4 h-4"/></button></td></tr>))}</tbody></table><div className="flex justify-between items-end mt-4"><div className="text-xs text-gray-400 font-bold">品項總數: {procItems.length} 項</div><div className="text-2xl font-black text-orange-600">總計金額: ${procItems.reduce((s, it) => s + (it.quantity*it.unitPrice), 0).toLocaleString()}</div></div></div>)}
               <button onClick={handleSaveProcurement} disabled={procItems.length === 0} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-2xl font-black text-xl shadow-lg transition-transform hover:scale-[1.01] active:scale-95 disabled:opacity-50">{editingHistoryProcId ? '儲存修改單據' : '儲存這筆採購單 ✨'}</button>{editingHistoryProcId && <button onClick={() => { setEditingHistoryProcId(''); setProcItems([]); }} className="w-full mt-3 bg-gray-100 py-3 rounded-2xl font-bold text-gray-500">取消修改</button>}
