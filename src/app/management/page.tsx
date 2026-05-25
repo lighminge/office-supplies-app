@@ -270,7 +270,8 @@ export default function ManagementPage() {
         setProcDate(''); setProcLocation(''); setProcItems([]); setProcCatId(''); setProcSupplyId(''); setProcQty(1); setProcPrice(0); setEditingProcSupplyId('');
         setEditingHistoryProcId('');
         fetchData();
-    } catch (e: any) { alert('入庫失敗：' + e.message); }
+      } catch (e: any) { alert('儲存失敗：' + e.message); }
+    });
   };
 
   const handleRestockModalConfirm = () => {
