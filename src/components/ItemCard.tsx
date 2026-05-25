@@ -1,6 +1,7 @@
 import React from 'react';
 import { OfficeSupply, Category, AppIcon } from '@/types';
 import * as Icons from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface ItemCardProps {
   item: OfficeSupply;
@@ -18,51 +19,68 @@ export default function ItemCard({ item, categories, icons, onEdit, onDelete }: 
   const isLowStock = item.quantity <= item.minQuantity;
 
   return (
-    <div className={`relative p-5 rounded-3xl border-2 transition-all hover:-translate-y-1 hover:shadow-md ${isLowStock ? 'bg-red-50 border-red-200' : 'bg-white border-sky-100'}`}>
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ y: -5 }}
+      className={`relative p-6 rounded-[2.5rem] border-2 transition-all shadow-sm hover:shadow-xl hover:shadow-sky-100/50 ${
+        isLowStock 
+        ? 'bg-rose-50/80 border-rose-100 backdrop-blur-sm' 
+        : 'bg-white/80 border-sky-100 backdrop-blur-sm'
+      }`}
+    >
       {isLowStock && (
-        <span className="absolute -top-3 -right-3 bg-red-400 text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm animate-bounce">
-          快用完了! 😱
+        <span className="absolute -top-3 -right-3 bg-rose-500 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg shadow-rose-200 animate-bounce tracking-tight">
+          庫存告急! 😱
         </span>
       )}
       
-      <div className="flex items-start gap-4">
-        <div className={`p-4 rounded-2xl ${isLowStock ? 'bg-red-100 text-red-500' : 'bg-sky-100 text-sky-500'}`}>
-          <IconComponent className="w-8 h-8" />
+      <div className="flex items-start gap-5">
+        <div className={`p-5 rounded-3xl shadow-inner ${
+          isLowStock ? 'bg-rose-100/50 text-rose-500' : 'bg-sky-100/50 text-sky-500'
+        }`}>
+          <IconComponent className="w-10 h-10" />
         </div>
         
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-bold text-gray-800 truncate">{item.name}</h3>
-          <div className="flex items-center gap-2 mt-1 mb-2">
-            <span className="inline-block px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-lg">
+          <h3 className="text-xl font-black text-gray-800 truncate leading-tight">{item.name}</h3>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <span className="inline-block px-3 py-1 bg-gray-100/80 text-gray-600 text-[10px] font-bold rounded-xl border border-gray-200/50">
               {category ? category.name : '未知類別'}
             </span>
-            <span className="inline-block px-2 py-1 bg-sky-50 text-sky-600 text-xs rounded-lg font-medium">
-              單價: ${item.price || 0}
+            <span className="inline-block px-3 py-1 bg-sky-50/80 text-sky-600 text-[10px] font-bold rounded-xl border border-sky-100/50">
+              單價: ${item.price?.toLocaleString() || 0}
             </span>
           </div>
           
-          <div className="flex items-center gap-4 text-sm mt-2">
-            <div className="flex items-center gap-1">
-              <span className="text-gray-500">庫存:</span>
-              <span className={`font-bold text-lg ${isLowStock ? 'text-red-500' : 'text-gray-700'}`}>
+          <div className="flex items-end justify-between mt-4">
+            <div className="flex flex-col">
+              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">目前庫存</span>
+              <span className={`font-black text-3xl leading-none ${isLowStock ? 'text-rose-500' : 'text-sky-600'}`}>
                 {item.quantity}
               </span>
             </div>
-            <div className="text-gray-400 text-xs">
-              (安全: {item.minQuantity})
+            <div className="text-gray-400 text-[10px] font-bold bg-gray-50 px-2 py-1 rounded-lg">
+              安全值: {item.minQuantity}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex gap-2 mt-4 pt-4 border-t-2 border-dashed border-gray-100">
-        <button onClick={() => onEdit(item)} className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-blue-50 text-blue-500 font-medium hover:bg-blue-100 transition-colors">
-          <Icons.Edit3 className="w-4 h-4" /> 編輯
+      <div className="flex gap-3 mt-6 pt-5 border-t-2 border-dashed border-gray-100/50">
+        <button 
+          onClick={() => onEdit(item)} 
+          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-sky-50 text-sky-600 font-bold hover:bg-sky-500 hover:text-white transition-all active:scale-95"
+        >
+          <Icons.Edit3 size={16} /> 編輯資料
         </button>
-        <button onClick={() => onDelete(item.id)} className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-gray-50 text-gray-500 font-medium hover:bg-red-50 hover:text-red-500 transition-colors">
-          <Icons.Trash2 className="w-4 h-4" /> 刪除
+        <button 
+          onClick={() => onDelete(item.id)} 
+          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-rose-50 text-rose-500 font-bold hover:bg-rose-500 hover:text-white transition-all active:scale-95"
+        >
+          <Icons.Trash2 size={16} /> 移除品項
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
