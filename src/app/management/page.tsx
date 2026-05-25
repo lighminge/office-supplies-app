@@ -274,6 +274,27 @@ export default function ManagementPage() {
     });
   };
 
+  const processRestock = async (procList: ProcurementRecord[], date: string) => {
+    try {
+      for (const proc of procList) {
+        if (proc.isRestocked) continue;
+        for (const item of proc.items) {
+          const supplyRef = doc(db, 'supplies', item.supplyId);
+          const supplyDoc = await getDoc(supplyRef);
+          if (supplyDoc.exists()) {
+            const currentQty = supplyDoc.data().quantity || 0;
+            await updateDoc(supplyRef, { quantity: currentQty + item.quantity });
+          }
+        }
+        await updateDoc(doc(db, 'procurements', proc.id), { isRestocked: true, restockDate: date });
+      }
+      const reqSnap = await getDocs(collection(db, 'requests'));
+      const pendingRestockReqs = reqSnap.docs.filter(doc => doc.data().status === 'pending-restock');
+      for (const r of pendingRestockReqs) await updateDoc(doc(db, 'requests', r.id), { status: 'restocked' });
+      fetchData();
+    } catch (e: any) { alert('入庫失敗：' + e.message); }
+  };
+
   const handleRestockModalConfirm = () => {
     setRestockDateModalOpen(false);
     requestAction('確定要將採購單的物品進行入庫嗎？入庫後將無法修改與刪除。', async () => {
