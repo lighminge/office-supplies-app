@@ -12,11 +12,13 @@ import {
   XCircle,
   KeyRound,
   Mail,
-  Users,
   Lock,
   Sparkles,
   Search,
   RefreshCw,
+  Globe,
+  Bell,
+  UserCheck,
 } from 'lucide-react';
 import { db, auth, createAuthAccountWithoutSignIn } from '@/lib/firebase';
 import {
@@ -68,7 +70,7 @@ export default function SystemManagementPage() {
   // Filters
   const [keyword, setKeyword] = useState('');
   const [roleFilter, setRoleFilter] = useState<'All' | SystemRole>('All');
-  const [statusFilter, setStatusFilter] = useState<'All' | 'active' | 'disabled'>('All');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'pending' | 'active' | 'disabled'>('All');
 
   // First-time Bootstrap Form
   const [bootEmail, setBootEmail] = useState('');
@@ -124,6 +126,13 @@ export default function SystemManagementPage() {
 
       if (usersSnap) {
         const list = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() } as SystemUser));
+        // 將「待核可 (pending)」的 Google 登入帳號排在最上方，方便管理員第一時間核可與設定權限
+        list.sort((a, b) => {
+          const aPending = a.approvalStatus === 'pending' ? 1 : 0;
+          const bPending = b.approvalStatus === 'pending' ? 1 : 0;
+          if (aPending !== bPending) return bPending - aPending;
+          return (b.updatedAt?.toMillis?.() || 0) - (a.updatedAt?.toMillis?.() || 0);
+        });
         setSystemUsers(list);
       }
       if (deptSnap) {
@@ -165,7 +174,7 @@ export default function SystemManagementPage() {
     }
   };
 
-  // --- Open Modal for Create / Edit ---
+  // --- Open Modal for Create / Edit / Approve ---
   const openCreateModal = () => {
     setEditingUser(null);
     setCreateMode('new_auth');
@@ -210,7 +219,28 @@ export default function SystemManagementPage() {
     }));
   };
 
-  // --- Save User (Create or Update) ---
+  // --- Quick Approve Pending Google Account ---
+  const handleQuickApprove = (u: SystemUser) => {
+    requestAction(
+      `確定要核可「${u.displayName} (${u.email})」的 Google 登入帳號嗎？（您也可以點擊「核可並設定權限」為其指派單位與進階模組權限）`,
+      async () => {
+        try {
+          await updateDoc(doc(db, 'system_users', u.uid), {
+            approvalStatus: 'approved',
+            isActive: true,
+            updatedAt: serverTimestamp(),
+          });
+          fetchData();
+        } catch (err: any) {
+          alert('核可失敗：' + err.message);
+        }
+      },
+      '確認核可',
+      'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-200'
+    );
+  };
+
+  // --- Save User (Create or Update / Approve) ---
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = sanitizeText(formDisplayName, 50);
@@ -267,6 +297,8 @@ export default function SystemManagementPage() {
         displayName: cleanName,
         role: formRole,
         isActive: formIsActive,
+        authProvider: editingUser?.authProvider || (createMode === 'new_auth' ? 'password' : 'google'),
+        approvalStatus: 'approved', // 管理員新增或儲存修改後即為已核可狀態
         departmentId: dept ? dept.id : '',
         departmentName: dept ? dept.name : '',
         personnelId: person ? person.id : '',
@@ -303,7 +335,7 @@ export default function SystemManagementPage() {
     } catch (err: any) {
       let msg = err?.message || '儲存失敗';
       if (err?.code === 'auth/email-already-in-use') {
-        msg = '此 Email 已經在 Firebase Authentication 註冊過！請改選「綁定既有 UID」或更換信箱。';
+        msg = '此 Email 已經在 Firebase Authentication 註冊過！請改選「綁定已註冊之 Firebase UID」或更換信箱。';
       }
       alert('儲存失敗：' + msg);
     } finally {
@@ -319,11 +351,12 @@ export default function SystemManagementPage() {
     }
     const nextState = !u.isActive;
     requestAction(
-      `確定要將「${u.displayName} (${u.email})」的帳號狀態變更為「${nextState ? '啟用' : '停用'}」嗎？`,
+      `確定要將「${u.displayName} (${u.email})」的帳號狀態變更為「${nextState ? '啟用（並標為已核可）' : '停用'}」嗎？`,
       async () => {
         try {
           await updateDoc(doc(db, 'system_users', u.uid), {
             isActive: nextState,
+            ...(nextState ? { approvalStatus: 'approved' } : {}),
             updatedAt: serverTimestamp(),
           });
           if (!nextState) {
@@ -384,9 +417,12 @@ export default function SystemManagementPage() {
     );
   };
 
+  const pendingUsersCount = systemUsers.filter(u => u.approvalStatus === 'pending').length;
+
   const filteredUsers = systemUsers.filter(u => {
     if (roleFilter !== 'All' && u.role !== roleFilter) return false;
-    if (statusFilter === 'active' && !u.isActive) return false;
+    if (statusFilter === 'pending' && u.approvalStatus !== 'pending') return false;
+    if (statusFilter === 'active' && (!u.isActive || u.approvalStatus === 'pending')) return false;
     if (statusFilter === 'disabled' && u.isActive) return false;
     if (keyword.trim()) {
       const kw = keyword.trim().toLowerCase();
@@ -430,7 +466,7 @@ export default function SystemManagementPage() {
               系統管理
             </h1>
             <p className="text-gray-500 mt-2 ml-1">
-              設定系統可登入帳號、角色身分與各功能模組的操作權限 🔐
+              核可 Google 登入帳號、設定系統人員角色身分與各功能模組的操作權限 🔐
             </p>
           </div>
 
@@ -451,6 +487,31 @@ export default function SystemManagementPage() {
             </div>
           )}
         </header>
+
+        {/* Pending Google Login Accounts Notification Banner */}
+        {isBootstrapped !== false && pendingUsersCount > 0 && (
+          <div className="mb-6 bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-sm">
+                <Bell className="w-6 h-6 animate-bounce" />
+              </div>
+              <div>
+                <h3 className="font-black text-amber-900 text-lg">
+                  有 {pendingUsersCount} 位使用 Google 帳號登入的使用者待您核可與設定權限
+                </h3>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  當新使用者以 Google 帳號登入系統後，會自動帶入下方列表，請點擊「核可並設定權限」指派單位及模組權限。
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setStatusFilter(statusFilter === 'pending' ? 'All' : 'pending')}
+              className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-4 py-2.5 rounded-xl text-xs whitespace-nowrap shadow-sm transition-colors"
+            >
+              {statusFilter === 'pending' ? '顯示全部人員' : `篩選待核可帳號 (${pendingUsersCount})`}
+            </button>
+          </div>
+        )}
 
         {/* First-Time Super Admin Bootstrap Wizard */}
         {isBootstrapped === false && (
@@ -546,7 +607,8 @@ export default function SystemManagementPage() {
                   className="rounded-xl border-2 border-emerald-100 px-3 py-2 text-sm focus:outline-none focus:border-emerald-300"
                 >
                   <option value="All">全部狀態</option>
-                  <option value="active">啟用中</option>
+                  <option value="pending">待核可 (Google 登入)</option>
+                  <option value="active">已核可啟用中</option>
                   <option value="disabled">已停用</option>
                 </select>
               </div>
@@ -564,7 +626,7 @@ export default function SystemManagementPage() {
                     <th className="py-3 pl-3">人員資訊 / 登入信箱</th>
                     <th className="py-3">綁定單位與人員</th>
                     <th className="py-3">系統角色</th>
-                    <th className="py-3">狀態</th>
+                    <th className="py-3">核可與啟用狀態</th>
                     <th className="py-3">可操作模組權限</th>
                     <th className="py-3 text-right pr-3">管理操作</th>
                   </tr>
@@ -573,19 +635,34 @@ export default function SystemManagementPage() {
                   {filteredUsers.map(u => {
                     const roleInfo = ROLE_LABELS[u.role] || ROLE_LABELS.staff;
                     const isSelf = u.uid === user?.uid;
+                    const isPending = u.approvalStatus === 'pending';
+                    const isGoogle = u.authProvider === 'google';
                     return (
                       <tr
                         key={u.uid}
-                        className={`border-b border-gray-100 hover:bg-emerald-50/30 transition-colors ${
-                          !u.isActive ? 'opacity-60 bg-gray-50/60' : ''
+                        className={`border-b border-gray-100 transition-colors ${
+                          isPending
+                            ? 'bg-amber-50/40 hover:bg-amber-50/70'
+                            : !u.isActive
+                            ? 'opacity-60 bg-gray-50/60'
+                            : 'hover:bg-emerald-50/30'
                         }`}
                       >
                         <td className="py-4 pl-3">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-black text-gray-800 text-base">{u.displayName}</span>
                             {isSelf && (
                               <span className="text-[10px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-bold">
                                 本人
+                              </span>
+                            )}
+                            {isGoogle ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded-full font-bold">
+                                <Globe className="w-3 h-3" /> Google 帳號
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-bold">
+                                信箱密碼
                               </span>
                             )}
                           </div>
@@ -619,26 +696,33 @@ export default function SystemManagementPage() {
                         </td>
 
                         <td className="py-4">
-                          <button
-                            onClick={() => handleToggleUserActive(u)}
-                            disabled={isSelf}
-                            title={isSelf ? '無法停用本人帳號' : '點擊切換啟用/停用'}
-                            className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg transition-colors ${
-                              u.isActive
-                                ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                                : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
-                            } ${isSelf ? 'cursor-not-allowed opacity-80' : ''}`}
-                          >
-                            {u.isActive ? (
-                              <>
-                                <CheckCircle2 className="w-3.5 h-3.5" /> 啟用中
-                              </>
-                            ) : (
-                              <>
-                                <XCircle className="w-3.5 h-3.5" /> 已停用
-                              </>
+                          <div className="flex flex-col items-start gap-1.5">
+                            {isPending && (
+                              <span className="inline-flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-lg bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
+                                待管理員核可
+                              </span>
                             )}
-                          </button>
+                            <button
+                              onClick={() => handleToggleUserActive(u)}
+                              disabled={isSelf}
+                              title={isSelf ? '無法停用本人帳號' : '點擊切換啟用/停用'}
+                              className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg transition-colors ${
+                                u.isActive
+                                  ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                  : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+                              } ${isSelf ? 'cursor-not-allowed opacity-80' : ''}`}
+                            >
+                              {u.isActive ? (
+                                <>
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> 啟用中
+                                </>
+                              ) : (
+                                <>
+                                  <XCircle className="w-3.5 h-3.5" /> 已停用
+                                </>
+                              )}
+                            </button>
+                          </div>
                         </td>
 
                         <td className="py-4">
@@ -663,7 +747,25 @@ export default function SystemManagementPage() {
                         </td>
 
                         <td className="py-4 text-right pr-3">
-                          <div className="flex justify-end gap-1.5">
+                          <div className="flex justify-end items-center gap-1.5 flex-wrap">
+                            {isPending && (
+                              <>
+                                <button
+                                  onClick={() => openEditModal(u)}
+                                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black shadow-sm flex items-center gap-1 transition-colors"
+                                  title="核可此 Google 帳號並設定詳細權限"
+                                >
+                                  <UserCheck className="w-3.5 h-3.5" /> 核可並設定權限
+                                </button>
+                                <button
+                                  onClick={() => handleQuickApprove(u)}
+                                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-colors"
+                                  title="直接以目前權限核可"
+                                >
+                                  直接核可
+                                </button>
+                              </>
+                            )}
                             <button
                               onClick={() => openEditModal(u)}
                               className="p-2 bg-sky-50 text-sky-600 rounded-xl hover:bg-sky-100 transition-colors"
@@ -695,7 +797,7 @@ export default function SystemManagementPage() {
                   {filteredUsers.length === 0 && (
                     <tr>
                       <td colSpan={6} className="text-center py-12 text-gray-400 font-bold">
-                        目前沒有符合條件的系統人員資料，請點擊右上角「新增登入人員與權限」建立帳號。
+                        目前沒有符合條件的系統人員資料。當有使用者透過 Google 帳號登入時，將會自動帶入此清單供您核可與設定權限。
                       </td>
                     </tr>
                   )}
@@ -705,7 +807,7 @@ export default function SystemManagementPage() {
           </div>
         )}
 
-        {/* Create / Edit System User Modal */}
+        {/* Create / Edit / Approve System User Modal */}
         {modalOpen && (
           <div className="fixed inset-0 bg-sky-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
             <div className="bg-white rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl border-2 border-emerald-100 my-8">
@@ -716,7 +818,11 @@ export default function SystemManagementPage() {
                   </div>
                   <div>
                     <h2 className="text-2xl font-black text-gray-800">
-                      {editingUser ? `修改人員權限 (${editingUser.displayName})` : '新增系統登入人員與權限'}
+                      {editingUser
+                        ? editingUser.approvalStatus === 'pending'
+                          ? `核可 Google 帳號並設定權限 (${editingUser.displayName})`
+                          : `修改人員權限 (${editingUser.displayName})`
+                        : '新增系統登入人員與權限'}
                     </h2>
                     <p className="text-xs text-gray-500">
                       設定登入憑證、所屬部門人員綁定以及可存取的系統功能
@@ -943,7 +1049,13 @@ export default function SystemManagementPage() {
                     disabled={savingUser}
                     className="flex-1 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm shadow-lg shadow-emerald-100 transition-all disabled:opacity-50"
                   >
-                    {savingUser ? '儲存處理中...' : editingUser ? '儲存權限修改' : '確認新增人員與權限'}
+                    {savingUser
+                      ? '儲存處理中...'
+                      : editingUser
+                      ? editingUser.approvalStatus === 'pending'
+                        ? '核可並儲存權限 ✨'
+                        : '儲存權限修改'
+                      : '確認新增人員與權限'}
                   </button>
                 </div>
               </form>

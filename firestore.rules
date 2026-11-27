@@ -30,6 +30,8 @@ rules_version = '2';
 //   - displayName: string (required, 1..50 chars)
 //   - role: string (required, enum: 'admin', 'manager', 'staff')
 //   - isActive: bool (required) - Whether the account is enabled
+//   - authProvider: string (optional, 0..30 chars) - Sign-in provider ('google', 'password')
+//   - approvalStatus: string (optional, 0..30 chars) - Approval status ('pending', 'approved')
 //   - departmentId: string (optional, 0..100 chars)
 //   - departmentName: string (optional, 0..50 chars)
 //   - personnelId: string (optional, 0..100 chars)
@@ -265,6 +267,8 @@ service cloud.firestore {
           'displayName',
           'role',
           'isActive',
+          'authProvider',
+          'approvalStatus',
           'departmentId',
           'departmentName',
           'personnelId',
@@ -288,6 +292,8 @@ service cloud.firestore {
         validStringLength('displayName', 1, 50) &&
         data.role in ['admin', 'manager', 'staff'] &&
         data.isActive is bool &&
+        isValidOptionalString('authProvider', 0, 30) &&
+        isValidOptionalString('approvalStatus', 0, 30) &&
         isValidOptionalString('departmentId', 0, 100) &&
         isValidOptionalString('departmentName', 0, 50) &&
         isValidOptionalString('personnelId', 0, 100) &&
@@ -441,8 +447,8 @@ service cloud.firestore {
          (isNonAnonymous() &&
           request.auth.uid == uid &&
           request.resource.data.role == 'staff' &&
-          request.resource.data.isActive == true &&
-          request.resource.data.permissions.canRequest == true &&
+          request.resource.data.isActive is bool &&
+          request.resource.data.permissions.canRequest is bool &&
           request.resource.data.permissions.canWorkflow == false &&
           request.resource.data.permissions.canManageSupplies == false &&
           request.resource.data.permissions.canViewReports == false &&

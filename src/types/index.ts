@@ -88,6 +88,8 @@ export interface SystemUser {
   displayName: string;
   role: SystemRole;
   isActive: boolean;
+  authProvider?: 'google' | 'password';
+  approvalStatus?: 'pending' | 'approved';
   departmentId?: string;
   departmentName?: string;
   personnelId?: string;

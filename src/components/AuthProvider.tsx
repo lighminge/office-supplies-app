@@ -8,6 +8,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signInAnonymously,
   signOut as firebaseSignOut,
@@ -27,6 +29,7 @@ import {
   Sparkles,
   User as UserIcon,
   Globe,
+  Clock,
 } from 'lucide-react';
 
 export interface BoundApplicant {
@@ -174,8 +177,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   /**
-   * 當一般使用者透過 Google 帳號登入時，若尚未在 system_users 建立權限檔案，
-   * 自動建立預設的一般人員 (staff) 記錄（僅開放用品申請權限），方便管理員後續於「系統管理」調整權限
+   * 當使用者透過 Google 帳號登入時，若尚未在 system_users 建立權限檔案，
+   * 自動將該 Google 帳號寫入 system_users（標記 authProvider: 'google', approvalStatus: 'pending'），
+   * 讓管理員可直接在「系統管理」頁面看到該帳號並執行核可或設定各種權限
    */
   const ensureNonAnonymousUserProfile = useCallback(async (firebaseUser: User): Promise<SystemUser | null> => {
     if (firebaseUser.isAnonymous) return null;
@@ -185,14 +189,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (snap.exists()) {
         return snap.data() as SystemUser;
       }
+
+      const isGoogle = firebaseUser.providerData.some(p => p.providerId === 'google.com');
       const cleanEmail = (firebaseUser.email || 'google-user@example.com').trim().toLowerCase().slice(0, 100);
       const cleanName = (
         firebaseUser.displayName ||
         firebaseUser.email?.split('@')[0] ||
-        '一般使用者'
+        'Google 使用者'
       )
         .trim()
-        .slice(0, 50) || '一般使用者';
+        .slice(0, 50) || 'Google 使用者';
 
       const defaultProfile: SystemUser = {
         uid: firebaseUser.uid,
@@ -200,6 +206,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         displayName: cleanName,
         role: 'staff',
         isActive: true,
+        authProvider: isGoogle ? 'google' : 'password',
+        approvalStatus: 'pending',
         departmentId: '',
         departmentName: '',
         personnelId: '',
@@ -213,7 +221,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updatedAt: serverTimestamp(),
       });
       return defaultProfile;
-    } catch {
+    } catch (err) {
+      console.error('Failed to auto-register user profile in system_users:', err);
       return null;
     }
   }, []);
@@ -252,7 +261,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ? (existingSysUserSnap.data() as SystemUser)
           : null;
 
-      if (!sysData && !(adminSnap && adminSnap.exists())) {
+      // 若該 Google / 一般帳號尚未在 system_users 中有紀錄，立即自動寫入以帶入「系統管理」清單
+      if (!sysData) {
         sysData = await ensureNonAnonymousUserProfile(firebaseUser);
       }
 
@@ -312,6 +322,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadUserProfileAndPermissions]);
 
   useEffect(() => {
+    // 處理若因瀏覽器阻擋彈窗而改用 Redirect 模式的 Google 登入回呼
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result?.user) {
+          await ensureNonAnonymousUserProfile(result.user);
+          await loadUserProfileAndPermissions(result.user);
+          markSessionUnlocked(true);
+        }
+      })
+      .catch(() => {});
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
@@ -326,7 +347,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [loadUserProfileAndPermissions]);
+  }, [ensureNonAnonymousUserProfile, loadUserProfileAndPermissions, markSessionUnlocked]);
 
   const hasPermission = useCallback(
     (perm: keyof UserPermissions): boolean => {
@@ -375,6 +396,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         displayName: cleanName,
         role: 'admin',
         isActive: true,
+        authProvider: 'password',
+        approvalStatus: 'approved',
         permissions: adminPerms,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -427,6 +450,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       const cred = await signInWithPopup(auth, provider);
+      await ensureNonAnonymousUserProfile(cred.user);
       await loadUserProfileAndPermissions(cred.user);
       markSessionUnlocked(true);
       setLoginModalOpen(false);
@@ -434,8 +458,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       if (err?.code === 'auth/popup-closed-by-user') {
         setModalError('已取消 Google 登入視窗。');
+      } else if (err?.code === 'auth/popup-blocked') {
+        // 若瀏覽器阻擋彈出視窗，自動切換為 Redirect 登入
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        await signInWithRedirect(auth, provider);
+      } else if (err?.code === 'auth/unauthorized-domain') {
+        setModalError(
+          `網域尚未授權 (${typeof window !== 'undefined' ? window.location.hostname : ''})，請於 Firebase Console > Authentication > Settings > Authorized domains 加入此網域。`
+        );
       } else {
-        setModalError('Google 登入失敗：請確認於 Firebase Console 已啟用 Google 登入並加入授權網域。');
+        setModalError(`Google 登入失敗 (${err?.code || '未知錯誤'})：${err?.message || ''}`);
       }
     } finally {
       setSubmitting(false);
@@ -482,7 +515,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ? '系統管理員'
       : systemUser.role === 'manager'
       ? '審核/管理人員'
-      : '一般人員'
+      : systemUser.approvalStatus === 'pending'
+      ? '一般人員 (待管理員核可權限)'
+      : '一般人員 (已核可)'
     : isAdmin
     ? '系統管理員'
     : user && !user.isAnonymous
@@ -588,7 +623,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           <div className="border-t border-gray-100 absolute top-1/2 left-0 right-0 -z-0" />
         </div>
 
-        {/* Google Login (支援一般使用者與管理員) */}
+        {/* Google Login (支援一般使用者與管理員，登入後自動帶入系統管理供核可權限) */}
         <div className="space-y-2.5">
           <button
             type="button"
@@ -683,6 +718,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     ? 'text-rose-700 bg-rose-50 border-rose-200'
                     : isAdmin
                     ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                    : systemUser?.approvalStatus === 'pending'
+                    ? 'text-amber-700 bg-amber-50 border-amber-200'
                     : 'text-indigo-700 bg-indigo-50 border-indigo-200'
                 }`}
               >
@@ -691,6 +728,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ) : (
               <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
                 訪客模式（免帳號密碼）
+              </span>
+            )}
+
+            {!isAdmin && systemUser?.approvalStatus === 'pending' && (
+              <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 text-xs">
+                <Clock className="w-3.5 h-3.5" />
+                帳號已送入系統管理清單，待管理員核可進階權限
               </span>
             )}
 
@@ -812,7 +856,7 @@ export function AdminGuard({
               </span>
             ) : user && !user.isAnonymous ? (
               <span className="block mt-2 text-xs text-rose-500 font-bold">
-                目前登入帳號（{user.email || user.uid}）尚未被授予此模組的操作權限，請聯繫系統管理員至「系統管理」開啟權限。
+                目前登入帳號（{user.email || user.uid}）已送入「系統管理」名單，請聯繫系統管理員核可並勾選此模組權限。
               </span>
             ) : (
               <span className="block mt-2 text-xs text-gray-400">
