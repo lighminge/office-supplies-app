@@ -13,15 +13,20 @@ import {
   AlertCircle,
   Clock,
   CheckCircle2,
-  ShieldCheck
+  ShieldCheck,
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
+import { UserPermissions } from '@/types';
 
 export default function Home() {
-  const { user, loading, isAdmin, hasPermission } = useAuth();
+  const { user, loading, isAdmin, hasPermission, isBootstrapped } = useAuth();
+  const [hideUnauthorized, setHideUnauthorized] = useState(false);
   const [stats, setStats] = useState({
     lowStock: 0,
     pendingReq: 0,
@@ -61,16 +66,83 @@ export default function Home() {
       }
     };
     fetchStats();
-  }, [loading, user, isAdmin]);
+  }, [loading, user, isAdmin, hasPermission]);
 
-  const features = [
-    { href: "/request", title: "用品申請", desc: "選取單位與人員快速申請", icon: ClipboardList, color: "sky" },
-    { href: "/workflow", title: "單據流程", desc: "核可與領用進度追蹤", icon: LayoutList, color: "indigo" },
-    { href: "/management", title: "用品管理", desc: "庫存、類別與插圖維護", icon: Package, color: "blue" },
-    { href: "/report", title: "統計報表", desc: "視覺化數據與紀錄導出", icon: BarChart3, color: "violet" },
-    { href: "/organization", title: "單位人員", desc: "組織架構與成員管理", icon: Users, color: "cyan" },
-    { href: "/system", title: "系統管理", desc: "登入帳號與操作權限設定", icon: ShieldCheck, color: "emerald" },
+  const features: {
+    href: string;
+    title: string;
+    desc: string;
+    icon: any;
+    permission: keyof UserPermissions;
+    iconBg: string;
+    iconText: string;
+  }[] = [
+    {
+      href: "/request",
+      title: "用品申請",
+      desc: "選取單位與人員快速申請",
+      icon: ClipboardList,
+      permission: "canRequest",
+      iconBg: "bg-sky-100",
+      iconText: "text-sky-500",
+    },
+    {
+      href: "/workflow",
+      title: "單據流程",
+      desc: "核可與領用進度追蹤",
+      icon: LayoutList,
+      permission: "canWorkflow",
+      iconBg: "bg-indigo-100",
+      iconText: "text-indigo-500",
+    },
+    {
+      href: "/management",
+      title: "用品管理",
+      desc: "庫存、類別與插圖維護",
+      icon: Package,
+      permission: "canManageSupplies",
+      iconBg: "bg-blue-100",
+      iconText: "text-blue-500",
+    },
+    {
+      href: "/report",
+      title: "統計報表",
+      desc: "視覺化數據與紀錄導出",
+      icon: BarChart3,
+      permission: "canViewReports",
+      iconBg: "bg-violet-100",
+      iconText: "text-violet-500",
+    },
+    {
+      href: "/organization",
+      title: "單位人員",
+      desc: "組織架構與成員管理",
+      icon: Users,
+      permission: "canManageOrg",
+      iconBg: "bg-cyan-100",
+      iconText: "text-cyan-500",
+    },
+    {
+      href: "/system",
+      title: "系統管理",
+      desc: "登入帳號與操作權限設定",
+      icon: ShieldCheck,
+      permission: "canManageSystem",
+      iconBg: "bg-emerald-100",
+      iconText: "text-emerald-600",
+    },
   ];
+
+  const isFeatureAllowed = (f: (typeof features)[number]) => {
+    if (f.href === "/system" && isBootstrapped === false) return true;
+    return hasPermission(f.permission);
+  };
+
+  const displayedFeatures = hideUnauthorized
+    ? features.filter(f => isFeatureAllowed(f))
+    : features;
+
+  const allowedCount = features.filter(f => isFeatureAllowed(f)).length;
 
   return (
     <main className="min-h-screen p-6 md:p-12 overflow-x-hidden">
@@ -78,7 +150,7 @@ export default function Home() {
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-7xl mx-auto mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6"
+        className="max-w-7xl mx-auto mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6"
       >
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -93,8 +165,27 @@ export default function Home() {
           <p className="text-gray-500 mt-4 text-lg">讓您的工作環境更有序、更有溫度 💙</p>
         </div>
 
-        {/* 快速統計摘要 */}
-        <div className="flex flex-wrap gap-3">
+        {/* 快速統計摘要與權限顯示切換 */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setHideUnauthorized(prev => !prev)}
+            className={`px-4 py-2 rounded-2xl text-xs font-black border-2 transition-all flex items-center gap-1.5 shadow-sm ${
+              hideUnauthorized
+                ? 'bg-sky-500 text-white border-sky-500'
+                : 'bg-white/80 text-gray-700 border-sky-200 hover:border-sky-400'
+            }`}
+          >
+            {hideUnauthorized ? (
+              <>
+                <Eye className="w-4 h-4" /> 顯示全部功能（含無權限標示）
+              </>
+            ) : (
+              <>
+                <EyeOff className="w-4 h-4 text-sky-500" /> 僅顯示可使用功能 ({allowedCount}/{features.length})
+              </>
+            )}
+          </button>
+
           <div className="bg-white/50 backdrop-blur-sm border border-white px-4 py-2 rounded-2xl flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-rose-500" />
             <span className="text-sm font-bold text-gray-700">{stats.lowStock} 項庫存告急</span>
@@ -111,34 +202,78 @@ export default function Home() {
         
         {/* 左側：功能卡片網格 (佔 8 欄) */}
         <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {features.map((f, i) => (
-            <motion.div
-              key={f.href}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.1 }}
-            >
-              <Link 
-                href={f.href} 
-                className="group relative block p-8 glass-panel hover:bg-white hover:border-sky-300 transition-all hover:shadow-2xl hover:shadow-sky-100 hover:-translate-y-2 overflow-hidden h-full"
+          {displayedFeatures.map((f, i) => {
+            const allowed = isFeatureAllowed(f);
+            return (
+              <motion.div
+                key={f.href}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.08 }}
               >
-                {/* 背景裝飾圖案 */}
-                <div className={`absolute -right-4 -bottom-4 opacity-5 group-hover:scale-125 group-hover:opacity-10 transition-all text-${f.color}-500`}>
-                  <f.icon size={160} />
-                </div>
+                {allowed ? (
+                  <Link 
+                    href={f.href} 
+                    className="group relative block p-8 glass-panel bg-white/85 border-2 border-sky-100 hover:bg-white hover:border-sky-400 transition-all hover:shadow-2xl hover:shadow-sky-100 hover:-translate-y-2 overflow-hidden h-full"
+                  >
+                    {/* 右上角可使用狀態標章 */}
+                    <div className="absolute top-5 right-5 z-10">
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> 可使用
+                      </span>
+                    </div>
 
-                <div className={`w-14 h-14 bg-${f.color}-100 text-${f.color}-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
-                  <f.icon size={28} />
-                </div>
-                
-                <h3 className="text-2xl font-black text-gray-800 mb-2 flex items-center gap-2">
-                  {f.title}
-                  <ChevronRight className="w-5 h-5 text-gray-300 group-hover:translate-x-1 group-hover:text-sky-500 transition-all" />
-                </h3>
-                <p className="text-gray-500 leading-relaxed font-medium">{f.desc}</p>
-              </Link>
-            </motion.div>
-          ))}
+                    {/* 背景裝飾圖案 */}
+                    <div className={`absolute -right-4 -bottom-4 opacity-5 group-hover:scale-125 group-hover:opacity-10 transition-all ${f.iconText}`}>
+                      <f.icon size={160} />
+                    </div>
+
+                    <div className={`w-14 h-14 ${f.iconBg} ${f.iconText} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-sm`}>
+                      <f.icon size={28} />
+                    </div>
+                    
+                    <h3 className="text-2xl font-black text-gray-800 mb-2 flex items-center gap-2">
+                      {f.title}
+                      <ChevronRight className="w-5 h-5 text-gray-300 group-hover:translate-x-1 group-hover:text-sky-500 transition-all" />
+                    </h3>
+                    <p className="text-gray-500 leading-relaxed font-medium">{f.desc}</p>
+                  </Link>
+                ) : (
+                  <div
+                    aria-disabled="true"
+                    className="relative block p-8 rounded-[2rem] bg-rose-50/70 border-2 border-rose-300/80 shadow-sm overflow-hidden h-full cursor-not-allowed select-none"
+                  >
+                    {/* 右上角明顯的無權限標籤 */}
+                    <div className="absolute top-5 right-5 z-10">
+                      <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black bg-rose-600 text-white shadow-md shadow-rose-200">
+                        <Lock className="w-3.5 h-3.5" /> 無權限
+                      </span>
+                    </div>
+
+                    {/* 背景裝飾圖案 */}
+                    <div className="absolute -right-4 -bottom-4 opacity-5 text-rose-400">
+                      <f.icon size={160} />
+                    </div>
+
+                    <div className="w-14 h-14 bg-rose-100 text-rose-400 rounded-2xl flex items-center justify-center mb-6">
+                      <f.icon size={28} />
+                    </div>
+                    
+                    <h3 className="text-2xl font-black text-gray-500 mb-2 flex items-center gap-2">
+                      {f.title}
+                      <Lock className="w-4 h-4 text-rose-500" />
+                    </h3>
+                    <p className="text-gray-400 leading-relaxed font-medium mb-4">{f.desc}</p>
+
+                    <div className="mt-auto inline-flex items-center gap-1.5 bg-rose-100/90 border border-rose-300 text-rose-700 px-3 py-1.5 rounded-xl text-xs font-black">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>目前登入帳號無此功能權限</span>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
         </div>
 
         {/* 右側：狀態看板 (佔 4 欄) */}
