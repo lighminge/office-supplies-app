@@ -348,7 +348,7 @@ export default function WorkflowPage() {
   const editFilteredSupplies = supplies.filter(s => newItemCatId ? s.categoryId === newItemCatId : true);
 
   return (
-    <AdminGuard>
+    <AdminGuard requiredPermission="canWorkflow">
     <main className="min-h-screen p-6 md:p-12 max-w-7xl mx-auto">
       <ConfirmModal 
         isOpen={confirmOpen} 

@@ -6,11 +6,39 @@ rules_version = '2';
 //
 // This security rules file assumes the following data structures:
 //
+// Collection: system_config
+// Document ID: bootstrap
+// Fields:
+//   - initialized: bool (required, must be true) - Bootstrap completion flag
+//   - firstAdminUid: string (required, immutable, matches request.auth.uid)
+//   - firstAdminEmail: string (required, 3..100 chars) - First admin email
+//   - updatedAt: timestamp (required) - Initialization timestamp
+//
 // Collection: admins
 // Document ID: {uid} (Firebase Auth UID)
 // Fields:
-//   - Managed exclusively via Firebase Console / Admin SDK.
-//   - Client writes are strictly prohibited to prevent privilege escalation.
+//   - uid: string (optional, 1..128 chars, matches {uid} if present)
+//   - email: string (optional, 0..100 chars)
+//   - role: string (required, must be 'admin')
+//   - updatedAt: timestamp (required)
+//
+// Collection: system_users
+// Document ID: {uid} (Firebase Auth UID)
+// Fields:
+//   - uid: string (required, immutable, matches {uid}, 1..128 chars)
+//   - email: string (required, 3..100 chars)
+//   - displayName: string (required, 1..50 chars)
+//   - role: string (required, enum: 'admin', 'manager', 'staff')
+//   - isActive: bool (required) - Whether the account is enabled
+//   - departmentId: string (optional, 0..100 chars)
+//   - departmentName: string (optional, 0..50 chars)
+//   - personnelId: string (optional, 0..100 chars)
+//   - personnelName: string (optional, 0..50 chars)
+//   - permissions: map (required, exact keys: canRequest, canWorkflow,
+//                  canManageSupplies, canViewReports, canManageOrg,
+//                  canManageSystem; all boolean)
+//   - createdAt: timestamp (optional)
+//   - updatedAt: timestamp (required)
 //
 // Collection: categories
 // Document ID: {categoryId}
@@ -99,16 +127,43 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Check if the user signed in with a non-anonymous provider (e.g., Email/Password, Google)
+    function isNonAnonymous() {
+      return isAuthenticated() &&
+        request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
     // Check if user owns the resource based on userId parameter
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Check if user holds Administrator privileges via Custom Claims or admins collection
+    // Check if the system has already completed first-admin bootstrap
+    function isBootstrapped() {
+      return exists(/databases/$(database)/documents/system_config/bootstrap);
+    }
+
+    // Check if the current user has an active system_users profile
+    function isActiveSystemUser() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/system_users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/system_users/$(request.auth.uid)).data.isActive == true;
+    }
+
+    // Check if user holds Administrator privileges via Custom Claims, admins collection, or active system_users role
     function isAdmin() {
       return isAuthenticated() &&
         (request.auth.token.admin == true ||
-         exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+         (isActiveSystemUser() &&
+          get(/databases/$(database)/documents/system_users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    // Check if user holds a specific granular permission (or is an Admin)
+    function hasPermission(perm) {
+      return isAdmin() ||
+        (isActiveSystemUser() &&
+         get(/databases/$(database)/documents/system_users/$(request.auth.uid)).data.permissions[perm] == true);
     }
 
     // Validate that the document contains only the allowed fields
@@ -164,6 +219,83 @@ service cloud.firestore {
     // ===============================================================
     // Domain Validators (Called in BOTH create and update)
     // ===============================================================
+
+    function isValidBootstrap(data) {
+      return hasOnlyAllowedFields(['initialized', 'firstAdminUid', 'firstAdminEmail', 'updatedAt']) &&
+        hasRequiredFields(['initialized', 'firstAdminUid', 'firstAdminEmail', 'updatedAt']) &&
+        data.initialized == true &&
+        data.firstAdminUid == request.auth.uid &&
+        validStringLength('firstAdminEmail', 3, 100) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminDoc(data) {
+      return hasOnlyAllowedFields(['uid', 'email', 'role', 'updatedAt']) &&
+        hasRequiredFields(['role', 'updatedAt']) &&
+        data.role == 'admin' &&
+        isValidOptionalString('uid', 1, 128) &&
+        isValidOptionalString('email', 0, 100) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPermissionsMap(perms) {
+      let allowedPerms = [
+        'canRequest',
+        'canWorkflow',
+        'canManageSupplies',
+        'canViewReports',
+        'canManageOrg',
+        'canManageSystem'
+      ];
+      return perms is map &&
+        perms.keys().hasOnly(allowedPerms) &&
+        perms.keys().hasAll(allowedPerms) &&
+        perms.canRequest is bool &&
+        perms.canWorkflow is bool &&
+        perms.canManageSupplies is bool &&
+        perms.canViewReports is bool &&
+        perms.canManageOrg is bool &&
+        perms.canManageSystem is bool;
+    }
+
+    function isValidSystemUser(data, uid) {
+      return hasOnlyAllowedFields([
+          'uid',
+          'email',
+          'displayName',
+          'role',
+          'isActive',
+          'departmentId',
+          'departmentName',
+          'personnelId',
+          'personnelName',
+          'permissions',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        hasRequiredFields([
+          'uid',
+          'email',
+          'displayName',
+          'role',
+          'isActive',
+          'permissions',
+          'updatedAt'
+        ]) &&
+        data.uid == uid &&
+        validStringLength('uid', 1, 128) &&
+        validStringLength('email', 3, 100) &&
+        validStringLength('displayName', 1, 50) &&
+        data.role in ['admin', 'manager', 'staff'] &&
+        data.isActive is bool &&
+        isValidOptionalString('departmentId', 0, 100) &&
+        isValidOptionalString('departmentName', 0, 50) &&
+        isValidOptionalString('personnelId', 0, 100) &&
+        isValidOptionalString('personnelName', 0, 50) &&
+        isValidPermissionsMap(data.permissions) &&
+        isValidOptionalTimestamp('createdAt') &&
+        data.updatedAt is timestamp;
+    }
 
     function isValidCategory(data) {
       return hasOnlyAllowedFields(['name', 'updatedAt']) &&
@@ -275,56 +407,93 @@ service cloud.firestore {
     // Collection Rules
     // ===============================================================
 
-    // 1. Admins Collection (Managed strictly via Console / Admin SDK)
+    // 0. System Config Bootstrap Document (One-time First Admin Initialization)
+    match /system_config/bootstrap {
+      allow read: if isAuthenticated();
+      allow create: if isNonAnonymous() &&
+        !isBootstrapped() &&
+        isValidBootstrap(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    // 1. Admins Collection
     match /admins/{uid} {
-      allow read: if isAuthenticated() && (isOwner(uid) || isAdmin());
-      allow create, update, delete: if false;
+      allow read: if isAuthenticated() && (isOwner(uid) || hasPermission('canManageSystem'));
+      allow create: if isValidAdminDoc(request.resource.data) &&
+        (hasPermission('canManageSystem') ||
+         (isNonAnonymous() && !isBootstrapped() && request.auth.uid == uid));
+      allow update: if hasPermission('canManageSystem') &&
+        isValidAdminDoc(request.resource.data);
+      allow delete: if hasPermission('canManageSystem') &&
+        request.auth.uid != uid;
+    }
+
+    // 1b. System Users Collection (Granular Role & Permission Management)
+    match /system_users/{uid} {
+      allow read: if isAuthenticated() && (isOwner(uid) || hasPermission('canManageSystem'));
+      allow create: if isValidSystemUser(request.resource.data, uid) &&
+        (hasPermission('canManageSystem') ||
+         (isNonAnonymous() &&
+          !isBootstrapped() &&
+          request.auth.uid == uid &&
+          request.resource.data.role == 'admin' &&
+          request.resource.data.isActive == true));
+      allow update: if hasPermission('canManageSystem') &&
+        isValidSystemUser(request.resource.data, uid) &&
+        areImmutableFieldsUnchanged(['uid']);
+      allow delete: if hasPermission('canManageSystem') &&
+        request.auth.uid != uid;
     }
 
     // 2. Categories Collection
     match /categories/{categoryId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin() && isValidCategory(request.resource.data);
-      allow update: if isAdmin() && isValidCategory(request.resource.data);
-      allow delete: if isAdmin();
+      allow create: if hasPermission('canManageSupplies') && isValidCategory(request.resource.data);
+      allow update: if hasPermission('canManageSupplies') && isValidCategory(request.resource.data);
+      allow delete: if hasPermission('canManageSupplies');
     }
 
     // 3. Icons Collection
     match /icons/{iconId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin() && isValidIcon(request.resource.data);
-      allow update: if isAdmin() && isValidIcon(request.resource.data);
-      allow delete: if isAdmin();
+      allow create: if hasPermission('canManageSupplies') && isValidIcon(request.resource.data);
+      allow update: if hasPermission('canManageSupplies') && isValidIcon(request.resource.data);
+      allow delete: if hasPermission('canManageSupplies');
     }
 
     // 4. Departments Collection
     match /departments/{deptId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin() && isValidDepartment(request.resource.data);
-      allow update: if isAdmin() && isValidDepartment(request.resource.data);
-      allow delete: if isAdmin();
+      allow create: if hasPermission('canManageOrg') && isValidDepartment(request.resource.data);
+      allow update: if hasPermission('canManageOrg') && isValidDepartment(request.resource.data);
+      allow delete: if hasPermission('canManageOrg');
     }
 
     // 5. Personnel Collection
     match /personnel/{personId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin() && isValidPersonnel(request.resource.data);
-      allow update: if isAdmin() && isValidPersonnel(request.resource.data);
-      allow delete: if isAdmin();
+      allow create: if hasPermission('canManageOrg') && isValidPersonnel(request.resource.data);
+      allow update: if hasPermission('canManageOrg') && isValidPersonnel(request.resource.data);
+      allow delete: if hasPermission('canManageOrg');
     }
 
     // 6. Office Supplies Inventory Collection
     match /supplies/{supplyId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin() && isValidSupply(request.resource.data);
-      allow update: if isAdmin() && isValidSupply(request.resource.data);
+      allow create: if hasPermission('canManageSupplies') && isValidSupply(request.resource.data);
+      allow update: if (hasPermission('canManageSupplies') || hasPermission('canWorkflow')) &&
+        isValidSupply(request.resource.data);
       // Business rule: Supplies can only be deleted when stock quantity is 0
-      allow delete: if isAdmin() && resource.data.quantity == 0;
+      allow delete: if hasPermission('canManageSupplies') && resource.data.quantity == 0;
     }
 
     // 7. Requisition Requests Collection
     match /requests/{requestId} {
-      allow read: if isAuthenticated() && (isAdmin() || resource.data.ownerUid == request.auth.uid);
+      allow read: if isAuthenticated() &&
+        (hasPermission('canWorkflow') ||
+         hasPermission('canManageSupplies') ||
+         hasPermission('canViewReports') ||
+         resource.data.ownerUid == request.auth.uid);
 
       allow create: if isAuthenticated() &&
         isValidRequest(request.resource.data, requestId) &&
@@ -334,7 +503,8 @@ service cloud.firestore {
 
       allow update: if isValidRequest(request.resource.data, requestId) &&
         (
-          (isAdmin() && areImmutableFieldsUnchanged(['id', 'ownerUid', 'createdAt'])) ||
+          ((hasPermission('canWorkflow') || hasPermission('canManageSupplies')) &&
+           areImmutableFieldsUnchanged(['id', 'ownerUid', 'createdAt'])) ||
           (isAuthenticated() &&
            resource.data.ownerUid == request.auth.uid &&
            resource.data.status == 'pending' &&
@@ -342,29 +512,30 @@ service cloud.firestore {
            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'updatedAt']))
         );
 
-      allow delete: if (isAdmin() && resource.data.status != 'completed') ||
+      allow delete: if ((hasPermission('canWorkflow') || hasPermission('canManageSupplies')) &&
+          resource.data.status != 'completed') ||
         (isAuthenticated() &&
          resource.data.ownerUid == request.auth.uid &&
          resource.data.status == 'pending');
     }
 
-    // 8. Procurements Collection (Admin Only)
+    // 8. Procurements Collection
     match /procurements/{procId} {
-      allow read: if isAdmin();
+      allow read: if hasPermission('canManageSupplies') || hasPermission('canViewReports');
 
-      allow create: if isAdmin() &&
+      allow create: if hasPermission('canManageSupplies') &&
         isValidProcurement(request.resource.data, procId) &&
         request.resource.data.isRestocked == false &&
         request.resource.data.createdAt == request.time;
 
       // Once restocked (isRestocked == true), procurement record is locked from modification
-      allow update: if isAdmin() &&
+      allow update: if hasPermission('canManageSupplies') &&
         isValidProcurement(request.resource.data, procId) &&
         resource.data.isRestocked == false &&
         areImmutableFieldsUnchanged(['id', 'createdAt']);
 
       // Restocked procurements cannot be deleted
-      allow delete: if isAdmin() && resource.data.isRestocked == false;
+      allow delete: if hasPermission('canManageSupplies') && resource.data.isRestocked == false;
     }
 
     // 9. Sequence Counters Collection (Atomic +1 Only)

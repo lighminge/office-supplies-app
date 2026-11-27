@@ -71,6 +71,59 @@ export interface ProcurementRecord {
   createdAt: any;
 }
 
+export type SystemRole = 'admin' | 'manager' | 'staff';
+
+export interface UserPermissions {
+  canRequest: boolean;        // 用品申請 (/request)
+  canWorkflow: boolean;       // 單據流程審核與領用 (/workflow)
+  canManageSupplies: boolean; // 用品與採購管理 (/management)
+  canViewReports: boolean;    // 統計報表查詢與匯出 (/report)
+  canManageOrg: boolean;      // 單位與人員管理 (/organization)
+  canManageSystem: boolean;   // 系統帳號與權限管理 (/system)
+}
+
+export interface SystemUser {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: SystemRole;
+  isActive: boolean;
+  departmentId?: string;
+  departmentName?: string;
+  personnelId?: string;
+  personnelName?: string;
+  permissions: UserPermissions;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export const ROLE_DEFAULT_PERMISSIONS: Record<SystemRole, UserPermissions> = {
+  admin: {
+    canRequest: true,
+    canWorkflow: true,
+    canManageSupplies: true,
+    canViewReports: true,
+    canManageOrg: true,
+    canManageSystem: true,
+  },
+  manager: {
+    canRequest: true,
+    canWorkflow: true,
+    canManageSupplies: true,
+    canViewReports: true,
+    canManageOrg: true,
+    canManageSystem: false,
+  },
+  staff: {
+    canRequest: true,
+    canWorkflow: false,
+    canManageSupplies: false,
+    canViewReports: false,
+    canManageOrg: false,
+    canManageSystem: false,
+  },
+};
+
 // Map of all available icons with default Chinese names
 export const LUCIDE_ICONS_MAP: Record<string, string> = {
   PenTool: '鋼筆/筆',

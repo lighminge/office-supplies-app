@@ -128,7 +128,7 @@ export default function OrganizationPage() {
     : personnel.filter(p => p.departmentId === filterDeptId);
 
   return (
-    <AdminGuard>
+    <AdminGuard requiredPermission="canManageOrg">
     <main className="min-h-screen p-6 md:p-12 max-w-5xl mx-auto">
       <ConfirmModal 
         isOpen={confirmOpen}

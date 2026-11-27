@@ -402,7 +402,7 @@ export default function ManagementPage() {
   const totalProcPages = Math.ceil(filteredProcurements.length / procPerPage) || 1;
 
   return (
-    <AdminGuard>
+    <AdminGuard requiredPermission="canManageSupplies">
     <main className="min-h-screen p-6 md:p-12 max-w-7xl mx-auto">
       <ConfirmModal isOpen={confirmOpen} title="確認執行" message={confirmMessage} onConfirm={confirmAction} onCancel={() => setConfirmOpen(false)} confirmText={confirmBtnText} confirmColor={confirmBtnColor} />
       

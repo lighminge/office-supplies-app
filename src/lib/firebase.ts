@@ -1,6 +1,6 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp, getApps, getApp, deleteApp } from "firebase/app";
 import { getFirestore, doc, runTransaction } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 const firebaseConfig = {
@@ -58,6 +58,24 @@ export async function getNextSerial(type: "REQ" | "PROC"): Promise<string> {
   });
   
   return `${type}${datePrefix}${String(nextNum).padStart(4, '0')}`;
+}
+
+/**
+ * 使用獨立的 Secondary Firebase App 建立新使用者的 Firebase Authentication 帳號
+ * 確保管理員在後台新增帳號時，不會覆蓋或登出管理員目前的登入狀態
+ */
+export async function createAuthAccountWithoutSignIn(email: string, password: string): Promise<string> {
+  const secondaryAppName = `SecondaryAuthApp_${Date.now()}`;
+  const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+  const secondaryAuth = getAuth(secondaryApp);
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email.trim(), password);
+    const newUid = cred.user.uid;
+    await signOut(secondaryAuth);
+    return newUid;
+  } finally {
+    await deleteApp(secondaryApp).catch(() => {});
+  }
 }
 
 export { app, db, auth };

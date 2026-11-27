@@ -12,7 +12,8 @@ import {
   ChevronRight, 
   AlertCircle,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  ShieldCheck
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { db } from '@/lib/firebase';
@@ -20,7 +21,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
 
 export default function Home() {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, isAdmin, hasPermission } = useAuth();
   const [stats, setStats] = useState({
     lowStock: 0,
     pendingReq: 0,
@@ -32,7 +33,12 @@ export default function Home() {
     if (loading || !user) return;
     const fetchStats = async () => {
       try {
-        const reqQuery = isAdmin
+        const canSeeAllRequests =
+          isAdmin ||
+          hasPermission('canWorkflow') ||
+          hasPermission('canManageSupplies') ||
+          hasPermission('canViewReports');
+        const reqQuery = canSeeAllRequests
           ? collection(db, 'requests')
           : query(collection(db, 'requests'), where('ownerUid', '==', user.uid));
 
@@ -63,6 +69,7 @@ export default function Home() {
     { href: "/management", title: "用品管理", desc: "庫存、類別與插圖維護", icon: Package, color: "blue" },
     { href: "/report", title: "統計報表", desc: "視覺化數據與紀錄導出", icon: BarChart3, color: "violet" },
     { href: "/organization", title: "單位人員", desc: "組織架構與成員管理", icon: Users, color: "cyan" },
+    { href: "/system", title: "系統管理", desc: "登入帳號與操作權限設定", icon: ShieldCheck, color: "emerald" },
   ];
 
   return (

@@ -13,7 +13,7 @@ import { getSafeLucideIcon, parsePositiveInt } from '@/lib/security';
 import React from 'react';
 
 export default function RequestPage() {
-  const { user, loading: authLoading, isAdmin, boundApplicant, bindApplicant } = useAuth();
+  const { user, loading: authLoading, isAdmin, hasPermission, boundApplicant, bindApplicant } = useAuth();
   const [supplies, setSupplies] = useState<OfficeSupply[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -69,7 +69,8 @@ export default function RequestPage() {
   const fetchData = async () => {
     if (authLoading || !user) return;
     try {
-      const reqQuery = isAdmin
+      const canSeeAllRequests = isAdmin || hasPermission('canWorkflow') || hasPermission('canManageSupplies');
+      const reqQuery = canSeeAllRequests
         ? collection(db, 'requests')
         : query(collection(db, 'requests'), where('ownerUid', '==', user.uid));
 
@@ -247,6 +248,10 @@ export default function RequestPage() {
   const handleSubmit = async () => {
     if (!user) {
       alert('尚未取得使用者安全憑證，請重新整理頁面或登入！');
+      return;
+    }
+    if (!hasPermission('canRequest')) {
+      alert('您的帳號目前無「用品申請」權限或已被停用！');
       return;
     }
     if (!selectedDeptId || !selectedPersonId || selectedItems.length === 0) {
