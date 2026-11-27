@@ -186,14 +186,57 @@ export default function Home() {
             )}
           </button>
 
-          <div className="bg-white/50 backdrop-blur-sm border border-white px-4 py-2 rounded-2xl flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-500" />
-            <span className="text-sm font-bold text-gray-700">{stats.lowStock} 項庫存告急</span>
-          </div>
-          <div className="bg-white/50 backdrop-blur-sm border border-white px-4 py-2 rounded-2xl flex items-center gap-2">
-            <Clock className="w-4 h-4 text-orange-500" />
-            <span className="text-sm font-bold text-gray-700">{stats.pendingReq} 筆待核可單據</span>
-          </div>
+          {/* 庫存告急按鈕：需具備用品管理 (canManageSupplies) 權限才可點擊跳轉 */}
+          {hasPermission('canManageSupplies') ? (
+            <Link
+              href="/management?lowStock=1"
+              title="點擊前往「用品管理」查看庫存告急物品"
+              className="bg-white/90 hover:bg-rose-500 group backdrop-blur-sm border-2 border-rose-200 hover:border-rose-500 px-4 py-2 rounded-2xl flex items-center gap-2 shadow-sm hover:shadow-md hover:shadow-rose-100 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            >
+              <AlertCircle className="w-4 h-4 text-rose-500 group-hover:text-white transition-colors" />
+              <span className="text-sm font-black text-gray-700 group-hover:text-white transition-colors">
+                {stats.lowStock} 項庫存告急
+              </span>
+              <ChevronRight className="w-4 h-4 text-rose-400 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              disabled
+              title="需具備「用品與採購管理」權限才可點擊前往"
+              className="bg-gray-100/80 border-2 border-gray-200 px-4 py-2 rounded-2xl flex items-center gap-2 opacity-70 cursor-not-allowed select-none"
+            >
+              <AlertCircle className="w-4 h-4 text-gray-400" />
+              <span className="text-sm font-bold text-gray-500">{stats.lowStock} 項庫存告急</span>
+              <Lock className="w-3.5 h-3.5 text-rose-400" />
+            </button>
+          )}
+
+          {/* 待核可單據按鈕：需具備單據審核 (canWorkflow) 權限才可點擊跳轉 */}
+          {hasPermission('canWorkflow') ? (
+            <Link
+              href="/workflow"
+              title="點擊前往「單據流程」審核待核可單據"
+              className="bg-white/90 hover:bg-orange-500 group backdrop-blur-sm border-2 border-orange-200 hover:border-orange-500 px-4 py-2 rounded-2xl flex items-center gap-2 shadow-sm hover:shadow-md hover:shadow-orange-100 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            >
+              <Clock className="w-4 h-4 text-orange-500 group-hover:text-white transition-colors" />
+              <span className="text-sm font-black text-gray-700 group-hover:text-white transition-colors">
+                {stats.pendingReq} 筆待核可單據
+              </span>
+              <ChevronRight className="w-4 h-4 text-orange-400 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              disabled
+              title="需具備「單據審核與領用」權限才可點擊前往"
+              className="bg-gray-100/80 border-2 border-gray-200 px-4 py-2 rounded-2xl flex items-center gap-2 opacity-70 cursor-not-allowed select-none"
+            >
+              <Clock className="w-4 h-4 text-gray-400" />
+              <span className="text-sm font-bold text-gray-500">{stats.pendingReq} 筆待核可單據</span>
+              <Lock className="w-3.5 h-3.5 text-rose-400" />
+            </button>
+          )}
         </div>
       </motion.div>
 

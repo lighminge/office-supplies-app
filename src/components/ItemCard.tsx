@@ -31,8 +31,8 @@ export default function ItemCard({ item, categories, icons, onEdit, onDelete }: 
       }`}
     >
       {isLowStock && (
-        <span className="absolute -top-3 -right-3 bg-rose-500 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg shadow-rose-200 animate-bounce tracking-tight">
-          庫存告急! 😱
+        <span className="absolute -top-4 -right-3 z-10 bg-gradient-to-r from-rose-600 to-red-500 text-white text-sm md:text-base font-black px-4 py-2 rounded-full border-2 border-white shadow-xl shadow-rose-300/80 animate-bounce tracking-wide">
+          ⚠️ 庫存告急! 😱
         </span>
       )}
       

@@ -27,6 +27,7 @@ export default function ManagementPage() {
   // Filters & Pagination
   const [supplyCategoryFilter, setSupplyCategoryFilter] = useState('');
   const [supplyKeywordFilter, setSupplyKeywordFilter] = useState('');
+  const [supplyLowStockOnly, setSupplyLowStockOnly] = useState(false);
   const [iconCategoryFilter, setIconCategoryFilter] = useState('');
   const [supplyPage, setSupplyPage] = useState(1);
   const itemsPerPage = 12;
@@ -84,6 +85,13 @@ export default function ManagementPage() {
 
   useEffect(() => {
     fetchData();
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('lowStock') === '1') {
+        setActiveTab('supplies');
+        setSupplyLowStockOnly(true);
+      }
+    }
   }, []);
 
   // --- Category ---
@@ -147,7 +155,8 @@ export default function ManagementPage() {
   const filteredSupplies = supplies.filter(s => {
     const matchCategory = supplyCategoryFilter ? s.categoryId === supplyCategoryFilter : true;
     const matchKeyword = supplyKeywordFilter ? s.name.toLowerCase().includes(supplyKeywordFilter.toLowerCase()) : true;
-    return matchCategory && matchKeyword;
+    const matchLowStock = supplyLowStockOnly ? s.quantity <= s.minQuantity : true;
+    return matchCategory && matchKeyword && matchLowStock;
   });
   const paginatedSupplies = filteredSupplies.slice((supplyPage - 1) * itemsPerPage, supplyPage * itemsPerPage);
   const totalSupplyPages = Math.ceil(filteredSupplies.length / itemsPerPage) || 1;
@@ -448,7 +457,7 @@ export default function ManagementPage() {
         )}
 
         {activeTab === 'supplies' && (
-          <div><div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-dashed border-sky-100 pb-6"><div className="flex items-center gap-2"><span className="font-bold text-gray-600">篩選：</span><select value={supplyCategoryFilter} onChange={e => { setSupplyCategoryFilter(e.target.value); setSupplyPage(1); }} className="rounded-xl border-2 border-sky-100 px-4 py-1"><option value="">全部類別</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><input type="text" placeholder="關鍵字搜尋..." value={supplyKeywordFilter} onChange={e => { setSupplyKeywordFilter(e.target.value); setSupplyPage(1); }} className="rounded-xl border-2 border-sky-100 px-4 py-1 w-40" /></div><div className="bg-sky-50 px-4 py-2 rounded-xl text-sky-600 font-bold border border-sky-100">{supplyCategoryFilter ? categories.find(c => c.id === supplyCategoryFilter)?.name : '全部類別'} 總計 {filteredSupplies.length} 項</div></div><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{paginatedSupplies.map(item => (<ItemCard key={item.id} item={item} categories={categories} icons={icons} onEdit={(item) => { setEditingSupply(item); setIsSupplyFormOpen(true); }} onDelete={handleDeleteSupply} />))}</div>{totalSupplyPages > 1 && (<div className="flex justify-center items-center gap-4 mt-8"><button disabled={supplyPage === 1} onClick={() => setSupplyPage(p => p - 1)} className="px-4 py-2 bg-sky-50 rounded-xl font-bold disabled:opacity-50 font-bold">上一頁</button><span className="font-bold">{supplyPage} / {totalSupplyPages}</span><button disabled={supplyPage === totalSupplyPages} onClick={() => setSupplyPage(p => p + 1)} className="px-4 py-2 bg-sky-50 rounded-xl font-bold disabled:opacity-50 font-bold">下一頁</button></div>)}</div>
+          <div><div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-dashed border-sky-100 pb-6"><div className="flex flex-wrap items-center gap-2"><span className="font-bold text-gray-600">篩選：</span><select value={supplyCategoryFilter} onChange={e => { setSupplyCategoryFilter(e.target.value); setSupplyPage(1); }} className="rounded-xl border-2 border-sky-100 px-4 py-1"><option value="">全部類別</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><input type="text" placeholder="關鍵字搜尋..." value={supplyKeywordFilter} onChange={e => { setSupplyKeywordFilter(e.target.value); setSupplyPage(1); }} className="rounded-xl border-2 border-sky-100 px-4 py-1 w-40" /><button type="button" onClick={() => { setSupplyLowStockOnly(prev => !prev); setSupplyPage(1); }} className={`px-3.5 py-1 rounded-xl text-sm font-black border-2 transition-all ${supplyLowStockOnly ? 'bg-rose-500 text-white border-rose-500 shadow-sm' : 'bg-white text-rose-500 border-rose-200 hover:bg-rose-50'}`}>{supplyLowStockOnly ? '⚠️ 僅顯示庫存告急 (點擊顯示全部)' : '⚠️ 篩選庫存告急'}</button></div><div className="bg-sky-50 px-4 py-2 rounded-xl text-sky-600 font-bold border border-sky-100">{supplyCategoryFilter ? categories.find(c => c.id === supplyCategoryFilter)?.name : '全部類別'}{supplyLowStockOnly ? ' (庫存告急)' : ''} 總計 {filteredSupplies.length} 項</div></div><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{paginatedSupplies.map(item => (<ItemCard key={item.id} item={item} categories={categories} icons={icons} onEdit={(item) => { setEditingSupply(item); setIsSupplyFormOpen(true); }} onDelete={handleDeleteSupply} />))}</div>{totalSupplyPages > 1 && (<div className="flex justify-center items-center gap-4 mt-8"><button disabled={supplyPage === 1} onClick={() => setSupplyPage(p => p - 1)} className="px-4 py-2 bg-sky-50 rounded-xl font-bold disabled:opacity-50 font-bold">上一頁</button><span className="font-bold">{supplyPage} / {totalSupplyPages}</span><button disabled={supplyPage === totalSupplyPages} onClick={() => setSupplyPage(p => p + 1)} className="px-4 py-2 bg-sky-50 rounded-xl font-bold disabled:opacity-50 font-bold">下一頁</button></div>)}</div>
         )}
 
         {activeTab === 'procurement' && (
