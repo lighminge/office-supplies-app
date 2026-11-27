@@ -19,6 +19,8 @@ export interface Personnel {
   id: string;
   name: string;
   departmentId: string;
+  email?: string;
+  uid?: string;
 }
 
 export interface OfficeSupply {
@@ -44,9 +46,11 @@ export interface RequestRecord {
   departmentName: string; // Cached
   applicantId: string;
   applicantName: string; // Cached
+  ownerUid?: string;
   items: RequestItem[];
   status: 'pending' | 'approved' | 'purchasing' | 'pending-restock' | 'restocked' | 'completed'; // 新增：狀態
   createdAt: any;
+  updatedAt?: any;
 }
 
 export interface ProcurementItem {

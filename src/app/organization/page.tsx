@@ -7,6 +7,8 @@ import { db } from '@/lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { Department, Personnel } from '@/types';
 import ConfirmModal from '@/components/ConfirmModal';
+import { AdminGuard } from '@/components/AuthProvider';
+import { sanitizeText } from '@/lib/security';
 
 export default function OrganizationPage() {
   const [activeTab, setActiveTab] = useState<'departments' | 'personnel'>('departments');
@@ -48,12 +50,13 @@ export default function OrganizationPage() {
 
   // Department Handlers
   const handleSaveDept = async () => {
-    if (!deptName) return alert('請輸入單位名稱！');
+    const cleanName = sanitizeText(deptName, 50);
+    if (!cleanName) return alert('請輸入有效的單位名稱（1~50 字元）！');
     try {
       if (deptId) {
-        await updateDoc(doc(db, 'departments', deptId), { name: deptName, updatedAt: serverTimestamp() });
+        await updateDoc(doc(db, 'departments', deptId), { name: cleanName, updatedAt: serverTimestamp() });
       } else {
-        await addDoc(collection(db, 'departments'), { name: deptName, updatedAt: serverTimestamp() });
+        await addDoc(collection(db, 'departments'), { name: cleanName, updatedAt: serverTimestamp() });
       }
       setDeptId('');
       setDeptName('');
@@ -83,12 +86,14 @@ export default function OrganizationPage() {
 
   // Personnel Handlers
   const handleSavePerson = async () => {
-    if (!personName || !personDeptId) return alert('請輸入人員名稱並選擇所屬單位！');
+    const cleanName = sanitizeText(personName, 50);
+    if (!cleanName || !personDeptId) return alert('請輸入有效的人員名稱（1~50 字元）並選擇所屬單位！');
+    if (!departments.some(d => d.id === personDeptId)) return alert('所選單位不存在！');
     try {
       if (personId) {
-        await updateDoc(doc(db, 'personnel', personId), { name: personName, departmentId: personDeptId, updatedAt: serverTimestamp() });
+        await updateDoc(doc(db, 'personnel', personId), { name: cleanName, departmentId: personDeptId, updatedAt: serverTimestamp() });
       } else {
-        await addDoc(collection(db, 'personnel'), { name: personName, departmentId: personDeptId, updatedAt: serverTimestamp() });
+        await addDoc(collection(db, 'personnel'), { name: cleanName, departmentId: personDeptId, updatedAt: serverTimestamp() });
       }
       setPersonId('');
       setPersonName('');
@@ -123,6 +128,7 @@ export default function OrganizationPage() {
     : personnel.filter(p => p.departmentId === filterDeptId);
 
   return (
+    <AdminGuard>
     <main className="min-h-screen p-6 md:p-12 max-w-5xl mx-auto">
       <ConfirmModal 
         isOpen={confirmOpen}
@@ -255,5 +261,6 @@ export default function OrganizationPage() {
         )}
       </div>
     </main>
+    </AdminGuard>
   );
 }

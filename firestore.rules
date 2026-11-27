@@ -1,0 +1,387 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: admins
+// Document ID: {uid} (Firebase Auth UID)
+// Fields:
+//   - Managed exclusively via Firebase Console / Admin SDK.
+//   - Client writes are strictly prohibited to prevent privilege escalation.
+//
+// Collection: categories
+// Document ID: {categoryId}
+// Fields:
+//   - name: string (required, 1..50 chars) - Category display name
+//   - updatedAt: timestamp (required) - Last update timestamp
+//
+// Collection: icons
+// Document ID: {iconId}
+// Fields:
+//   - name: string (required, 1..50 chars) - Lucide icon identifier
+//   - label: string (required, 1..50 chars) - Human-readable icon label
+//   - categoryId: string (required, 1..100 chars) - Associated category ID
+//   - updatedAt: timestamp (required) - Last update timestamp
+//
+// Collection: departments
+// Document ID: {deptId}
+// Fields:
+//   - name: string (required, 1..50 chars) - Department display name
+//   - updatedAt: timestamp (required) - Last update timestamp
+//
+// Collection: personnel
+// Document ID: {personId}
+// Fields:
+//   - name: string (required, 1..50 chars) - Staff member name
+//   - departmentId: string (required, 1..100 chars) - Associated department ID
+//   - email: string (optional, 0..100 chars) - Staff email address
+//   - uid: string (optional, 0..128 chars) - Linked Firebase Auth UID
+//   - updatedAt: timestamp (required) - Last update timestamp
+//
+// Collection: supplies
+// Document ID: {supplyId}
+// Fields:
+//   - name: string (required, 1..50 chars) - Office supply item name
+//   - categoryId: string (required, 1..100 chars) - Associated category ID
+//   - quantity: int (required, 0..1000000) - Current stock quantity
+//   - minQuantity: int (required, 0..1000000) - Safety stock alert threshold
+//   - price: number (required, 0..10000000) - Reference unit price
+//   - iconId: string (required, 1..100 chars) - Associated icon identifier
+//   - updatedAt: timestamp (optional) - Last update timestamp
+//
+// Collection: requests
+// Document ID: {requestId} (e.g., REQ-YYYYMMDD-XXX)
+// Fields:
+//   - id: string (required, immutable, matches {requestId}, 1..50 chars)
+//   - departmentId: string (required, 1..100 chars)
+//   - departmentName: string (required, 1..50 chars)
+//   - applicantId: string (required, 1..100 chars)
+//   - applicantName: string (required, 1..50 chars)
+//   - ownerUid: string (required, immutable, 1..128 chars) - Creator Auth UID
+//   - items: list (required, 1..100 elements of { supplyId, name, quantity })
+//   - status: string (required, enum: 'pending', 'approved', 'purchasing',
+//             'pending-restock', 'restocked', 'completed')
+//   - createdAt: timestamp (required, immutable, equals request.time on create)
+//   - updatedAt: timestamp (optional)
+//
+// Collection: procurements
+// Document ID: {procId} (e.g., PO-YYYYMMDD-XXX)
+// Fields:
+//   - id: string (required, immutable, matches {procId}, 1..50 chars)
+//   - date: string (required, 10 chars, YYYY-MM-DD)
+//   - location: string (required, 1..100 chars) - Vendor/purchase location
+//   - items: list (required, 1..100 elements of { supplyId, name, quantity, unitPrice })
+//   - totalAmount: number (required, 0..100000000)
+//   - isRestocked: bool (required, must be false on create, immutable once true)
+//   - restockDate: string (optional, 10 chars, YYYY-MM-DD)
+//   - createdAt: timestamp (required, immutable, equals request.time on create)
+//   - updatedAt: timestamp (optional)
+//
+// Collection: counters
+// Document ID: {counterId}
+// Fields:
+//   - count: int (required, >= 1, atomic +1 increments only)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user owns the resource based on userId parameter
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if user holds Administrator privileges via Custom Claims or admins collection
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.admin == true ||
+         exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // Validate that the document contains only the allowed fields
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate string length on request.resource.data
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    // Validate optional string (if present, must be string and within length bounds)
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+        (request.resource.data[field] is string &&
+         request.resource.data[field].size() >= minLen &&
+         request.resource.data[field].size() <= maxLen);
+    }
+
+    // Validate optional timestamp (if present, must be timestamp)
+    function isValidOptionalTimestamp(field) {
+      return !(field in request.resource.data) ||
+        request.resource.data[field] is timestamp;
+    }
+
+    // Validate YYYY-MM-DD date string format
+    function isValidDateOnlyString(dateStr) {
+      return dateStr is string &&
+        dateStr.size() == 10 &&
+        dateStr.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    // Validate that a list is a list within size limits
+    function isValidList(listData, minSize, maxSize) {
+      return listData is list &&
+        listData.size() >= minSize &&
+        listData.size() <= maxSize;
+    }
+
+    // Validate that immutable fields have not been modified on update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators (Called in BOTH create and update)
+    // ===============================================================
+
+    function isValidCategory(data) {
+      return hasOnlyAllowedFields(['name', 'updatedAt']) &&
+        hasRequiredFields(['name', 'updatedAt']) &&
+        validStringLength('name', 1, 50) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidIcon(data) {
+      return hasOnlyAllowedFields(['name', 'label', 'categoryId', 'updatedAt']) &&
+        hasRequiredFields(['name', 'label', 'categoryId', 'updatedAt']) &&
+        validStringLength('name', 1, 50) &&
+        validStringLength('label', 1, 50) &&
+        validStringLength('categoryId', 1, 100) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidDepartment(data) {
+      return hasOnlyAllowedFields(['name', 'updatedAt']) &&
+        hasRequiredFields(['name', 'updatedAt']) &&
+        validStringLength('name', 1, 50) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPersonnel(data) {
+      return hasOnlyAllowedFields(['name', 'departmentId', 'email', 'uid', 'updatedAt']) &&
+        hasRequiredFields(['name', 'departmentId', 'updatedAt']) &&
+        validStringLength('name', 1, 50) &&
+        validStringLength('departmentId', 1, 100) &&
+        isValidOptionalString('email', 0, 100) &&
+        isValidOptionalString('uid', 0, 128) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSupply(data) {
+      return hasOnlyAllowedFields(['name', 'categoryId', 'quantity', 'minQuantity', 'price', 'iconId', 'updatedAt']) &&
+        hasRequiredFields(['name', 'categoryId', 'quantity', 'minQuantity', 'price', 'iconId']) &&
+        validStringLength('name', 1, 50) &&
+        validStringLength('categoryId', 1, 100) &&
+        data.quantity is int && data.quantity >= 0 && data.quantity <= 1000000 &&
+        data.minQuantity is int && data.minQuantity >= 0 && data.minQuantity <= 1000000 &&
+        data.price is number && data.price >= 0 && data.price <= 10000000 &&
+        validStringLength('iconId', 1, 100) &&
+        isValidOptionalTimestamp('updatedAt');
+    }
+
+    function isValidRequestItem(item) {
+      return item is map &&
+        item.keys().hasOnly(['supplyId', 'name', 'quantity']) &&
+        item.keys().hasAll(['supplyId', 'name', 'quantity']) &&
+        item.supplyId is string && item.supplyId.size() >= 1 && item.supplyId.size() <= 100 &&
+        item.name is string && item.name.size() >= 1 && item.name.size() <= 50 &&
+        item.quantity is int && item.quantity > 0 && item.quantity <= 100000;
+    }
+
+    function isValidRequest(data, requestId) {
+      let validStatuses = ['pending', 'approved', 'purchasing', 'pending-restock', 'restocked', 'completed'];
+      return hasOnlyAllowedFields(['id', 'departmentId', 'departmentName', 'applicantId', 'applicantName', 'ownerUid', 'items', 'status', 'createdAt', 'updatedAt']) &&
+        hasRequiredFields(['id', 'departmentId', 'departmentName', 'applicantId', 'applicantName', 'ownerUid', 'items', 'status', 'createdAt']) &&
+        validStringLength('id', 1, 50) &&
+        data.id == requestId &&
+        validStringLength('departmentId', 1, 100) &&
+        validStringLength('departmentName', 1, 50) &&
+        validStringLength('applicantId', 1, 100) &&
+        validStringLength('applicantName', 1, 50) &&
+        validStringLength('ownerUid', 1, 128) &&
+        isValidList(data.items, 1, 100) &&
+        isValidRequestItem(data.items[0]) &&
+        data.status in validStatuses &&
+        data.createdAt is timestamp &&
+        isValidOptionalTimestamp('updatedAt');
+    }
+
+    function isValidProcurementItem(item) {
+      return item is map &&
+        item.keys().hasOnly(['supplyId', 'name', 'quantity', 'unitPrice']) &&
+        item.keys().hasAll(['supplyId', 'name', 'quantity', 'unitPrice']) &&
+        item.supplyId is string && item.supplyId.size() >= 1 && item.supplyId.size() <= 100 &&
+        item.name is string && item.name.size() >= 1 && item.name.size() <= 50 &&
+        item.quantity is int && item.quantity > 0 && item.quantity <= 100000 &&
+        item.unitPrice is number && item.unitPrice >= 0 && item.unitPrice <= 10000000;
+    }
+
+    function isValidProcurement(data, procId) {
+      return hasOnlyAllowedFields(['id', 'date', 'location', 'items', 'totalAmount', 'isRestocked', 'restockDate', 'createdAt', 'updatedAt']) &&
+        hasRequiredFields(['id', 'date', 'location', 'items', 'totalAmount', 'isRestocked', 'createdAt']) &&
+        validStringLength('id', 1, 50) &&
+        data.id == procId &&
+        isValidDateOnlyString(data.date) &&
+        validStringLength('location', 1, 100) &&
+        isValidList(data.items, 1, 100) &&
+        isValidProcurementItem(data.items[0]) &&
+        data.totalAmount is number && data.totalAmount >= 0 && data.totalAmount <= 100000000 &&
+        data.isRestocked is bool &&
+        (!('restockDate' in data) || isValidDateOnlyString(data.restockDate)) &&
+        data.createdAt is timestamp &&
+        isValidOptionalTimestamp('updatedAt');
+    }
+
+    function isValidCounter(data) {
+      return hasOnlyAllowedFields(['count']) &&
+        hasRequiredFields(['count']) &&
+        data.count is int &&
+        data.count >= 1 &&
+        data.count <= 1000000000;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // 1. Admins Collection (Managed strictly via Console / Admin SDK)
+    match /admins/{uid} {
+      allow read: if isAuthenticated() && (isOwner(uid) || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    // 2. Categories Collection
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidCategory(request.resource.data);
+      allow update: if isAdmin() && isValidCategory(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // 3. Icons Collection
+    match /icons/{iconId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidIcon(request.resource.data);
+      allow update: if isAdmin() && isValidIcon(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // 4. Departments Collection
+    match /departments/{deptId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidDepartment(request.resource.data);
+      allow update: if isAdmin() && isValidDepartment(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // 5. Personnel Collection
+    match /personnel/{personId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidPersonnel(request.resource.data);
+      allow update: if isAdmin() && isValidPersonnel(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // 6. Office Supplies Inventory Collection
+    match /supplies/{supplyId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidSupply(request.resource.data);
+      allow update: if isAdmin() && isValidSupply(request.resource.data);
+      // Business rule: Supplies can only be deleted when stock quantity is 0
+      allow delete: if isAdmin() && resource.data.quantity == 0;
+    }
+
+    // 7. Requisition Requests Collection
+    match /requests/{requestId} {
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.ownerUid == request.auth.uid);
+
+      allow create: if isAuthenticated() &&
+        isValidRequest(request.resource.data, requestId) &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time;
+
+      allow update: if isValidRequest(request.resource.data, requestId) &&
+        (
+          (isAdmin() && areImmutableFieldsUnchanged(['id', 'ownerUid', 'createdAt'])) ||
+          (isAuthenticated() &&
+           resource.data.ownerUid == request.auth.uid &&
+           resource.data.status == 'pending' &&
+           request.resource.data.status == 'pending' &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'updatedAt']))
+        );
+
+      allow delete: if (isAdmin() && resource.data.status != 'completed') ||
+        (isAuthenticated() &&
+         resource.data.ownerUid == request.auth.uid &&
+         resource.data.status == 'pending');
+    }
+
+    // 8. Procurements Collection (Admin Only)
+    match /procurements/{procId} {
+      allow read: if isAdmin();
+
+      allow create: if isAdmin() &&
+        isValidProcurement(request.resource.data, procId) &&
+        request.resource.data.isRestocked == false &&
+        request.resource.data.createdAt == request.time;
+
+      // Once restocked (isRestocked == true), procurement record is locked from modification
+      allow update: if isAdmin() &&
+        isValidProcurement(request.resource.data, procId) &&
+        resource.data.isRestocked == false &&
+        areImmutableFieldsUnchanged(['id', 'createdAt']);
+
+      // Restocked procurements cannot be deleted
+      allow delete: if isAdmin() && resource.data.isRestocked == false;
+    }
+
+    // 9. Sequence Counters Collection (Atomic +1 Only)
+    match /counters/{counterId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        isValidCounter(request.resource.data) &&
+        request.resource.data.count == 1;
+      allow update: if isAuthenticated() &&
+        isValidCounter(request.resource.data) &&
+        request.resource.data.count == resource.data.count + 1;
+      allow delete: if false;
+    }
+
+    // 10. Default Deny All Other Paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

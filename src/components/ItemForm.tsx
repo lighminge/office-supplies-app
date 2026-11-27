@@ -7,14 +7,15 @@ import * as z from 'zod';
 import { OfficeSupply, Category, AppIcon } from '@/types';
 import * as Icons from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getSafeLucideIcon } from '@/lib/security';
 
 const schema = z.object({
-  name: z.string().min(1, '請輸入物品名稱').max(50, '名稱太長了啦 >_<'),
-  categoryId: z.string().min(1, '請選擇分類'),
-  quantity: z.number({ invalid_type_error: '數量必須是數字唷' }).min(0, '數量不能是負數啦'),
-  minQuantity: z.number({ invalid_type_error: '安全庫存必須是數字' }).min(0, '不能是負數'),
-  price: z.number({ invalid_type_error: '單價必須是數字' }).min(0, '不能是負數'),
-  iconId: z.string().min(1, '請選一個可愛的圖示'),
+  name: z.string().trim().min(1, '請輸入物品名稱').max(50, '名稱太長了啦 >_<'),
+  categoryId: z.string().trim().min(1, '請選擇分類').max(100),
+  quantity: z.number({ invalid_type_error: '數量必須是數字唷' }).int('數量必須是整數').min(0, '數量不能是負數啦').max(1000000, '數量超過上限'),
+  minQuantity: z.number({ invalid_type_error: '安全庫存必須是數字' }).int('安全庫存必須是整數').min(0, '不能是負數').max(1000000, '數量超過上限'),
+  price: z.number({ invalid_type_error: '單價必須是數字' }).min(0, '不能是負數').max(10000000, '單價超過上限'),
+  iconId: z.string().trim().min(1, '請選一個可愛的圖示').max(100),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -112,7 +113,7 @@ export default function ItemForm({ initialData, categories, icons, onSubmit, onC
            <label className="block text-sm font-medium text-gray-700 mb-1">插圖</label>
            <div className="flex items-center gap-2">
              <div className="p-2 bg-sky-50 rounded-xl">
-               {selectedIconData ? React.createElement((Icons as any)[selectedIconData.name] || Icons.HelpCircle, { className: 'w-6 h-6 text-sky-500' }) : <Icons.HelpCircle className="w-6 h-6 text-gray-400" />}
+               {selectedIconData ? React.createElement(getSafeLucideIcon(selectedIconData.name), { className: 'w-6 h-6 text-sky-500' }) : <Icons.HelpCircle className="w-6 h-6 text-gray-400" />}
              </div>
              <select 
               {...register('iconId')} 

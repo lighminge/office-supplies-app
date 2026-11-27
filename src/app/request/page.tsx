@@ -2,16 +2,18 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileText, Plus, Trash2, Printer, Edit3 } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Trash2, Printer, Edit3, Lock, UserCheck } from 'lucide-react';
 import { db, getNextSerial } from '@/lib/firebase';
-import { collection, getDocs, setDoc, serverTimestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, setDoc, serverTimestamp, doc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { OfficeSupply, Department, Personnel, RequestItem, Category, RequestRecord, AppIcon } from '@/types';
 import { useReactToPrint } from 'react-to-print';
 import ConfirmModal from '@/components/ConfirmModal';
-import * as Icons from 'lucide-react';
+import { useAuth } from '@/components/AuthProvider';
+import { getSafeLucideIcon, parsePositiveInt } from '@/lib/security';
 import React from 'react';
 
 export default function RequestPage() {
+  const { user, loading: authLoading, isAdmin, boundApplicant, bindApplicant } = useAuth();
   const [supplies, setSupplies] = useState<OfficeSupply[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -65,13 +67,18 @@ export default function RequestPage() {
   const [editQty, setEditQty] = useState<number | string>(1);
 
   const fetchData = async () => {
+    if (authLoading || !user) return;
     try {
+      const reqQuery = isAdmin
+        ? collection(db, 'requests')
+        : query(collection(db, 'requests'), where('ownerUid', '==', user.uid));
+
       const [catSnap, supSnap, deptSnap, perSnap, reqSnap, iconSnap] = await Promise.all([
         getDocs(collection(db, 'categories')),
         getDocs(collection(db, 'supplies')),
         getDocs(collection(db, 'departments')),
         getDocs(collection(db, 'personnel')),
-        getDocs(collection(db, 'requests')),
+        getDocs(reqQuery),
         getDocs(collection(db, 'icons'))
       ]);
       setCategories(catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
@@ -83,7 +90,15 @@ export default function RequestPage() {
     } catch (error) { console.error('Failed to fetch data', error); }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [authLoading, user, isAdmin]);
+
+  // 若一般使用者已綁定申請人身分，強制鎖定該單位與人員，防止任意切換冒用他人身分 (IDOR)
+  useEffect(() => {
+    if (!isAdmin && boundApplicant) {
+      setSelectedDeptId(boundApplicant.departmentId);
+      setSelectedPersonId(boundApplicant.applicantId);
+    }
+  }, [isAdmin, boundApplicant]);
 
   // Ensure returning to page 1 when changing person
   useEffect(() => {
@@ -93,21 +108,29 @@ export default function RequestPage() {
   const renderIcon = (supplyId: string) => {
     const supply = supplies.find(s => s.id === supplyId);
     const iconData = icons.find(i => i.id === supply?.iconId);
-    const IconComp = iconData ? (Icons as any)[iconData.name] : Icons.HelpCircle;
+    const IconComp = getSafeLucideIcon(iconData?.name);
     return <IconComp className="w-5 h-5 text-sky-500 flex-shrink-0" />;
   };
 
   // Create Flow
   const handleAddItem = () => {
-    const qty = Number(currentQty) || 0;
-    if (!currentItemId || qty <= 0) return;
+    const qty = parsePositiveInt(currentQty, 10000);
+    if (!currentItemId || !qty) {
+      alert('請選擇物品並輸入有效的正整數數量（1 ~ 10000）！');
+      return;
+    }
     const supply = supplies.find(s => s.id === currentItemId);
     if (!supply) return;
     
     const existing = selectedItems.find(item => item.supplyId === currentItemId);
     if (existing) {
+      const nextQty = parsePositiveInt(existing.quantity + qty, 10000);
+      if (!nextQty) {
+        alert('單一品項累計申請數量不可超過 10000！');
+        return;
+      }
       setSelectedItems(selectedItems.map(item => 
-        item.supplyId === currentItemId ? { ...item, quantity: item.quantity + qty } : item
+        item.supplyId === currentItemId ? { ...item, quantity: nextQty } : item
       ));
     } else {
       setSelectedItems([...selectedItems, { supplyId: supply.id, name: supply.name, quantity: qty }]);
@@ -122,19 +145,35 @@ export default function RequestPage() {
 
   // Edit Flow
   const handleEditReq = (req: RequestRecord) => {
+    if (req.status && req.status !== 'pending') {
+      alert('僅能修改「未核可」狀態的申請單！');
+      return;
+    }
+    if (!isAdmin && req.ownerUid && req.ownerUid !== user?.uid) {
+      alert('權限不足：您僅能修改自己建立的申請單！');
+      return;
+    }
     setEditingReq(req);
     setEditItems(req.items.map(item => ({ ...item }))); // Deep copy
   };
   const handleAddEditItem = () => {
-    const qty = Number(editQty) || 0;
-    if (!editItemId || qty <= 0) return;
+    const qty = parsePositiveInt(editQty, 10000);
+    if (!editItemId || !qty) {
+      alert('請選擇物品並輸入有效的正整數數量（1 ~ 10000）！');
+      return;
+    }
     const supply = supplies.find(s => s.id === editItemId);
     if (!supply) return;
     
     const existing = editItems.find(item => item.supplyId === editItemId);
     if (existing) {
+      const nextQty = parsePositiveInt(existing.quantity + qty, 10000);
+      if (!nextQty) {
+        alert('單一品項累計申請數量不可超過 10000！');
+        return;
+      }
       setEditItems(editItems.map(item => 
-        item.supplyId === editItemId ? { ...item, quantity: item.quantity + qty } : item
+        item.supplyId === editItemId ? { ...item, quantity: nextQty } : item
       ));
     } else {
       setEditItems([...editItems, { supplyId: supply.id, name: supply.name, quantity: qty }]);
@@ -143,14 +182,28 @@ export default function RequestPage() {
   };
   const handleSaveEdit = async () => {
     if (!editingReq) return;
+    if (editItems.length === 0 || editItems.length > 100) {
+      alert('申請品項數量須介於 1 ~ 100 項之間！');
+      return;
+    }
+    for (const item of editItems) {
+      const validQty = parsePositiveInt(item.quantity, 10000);
+      if (!item.supplyId || !item.name || !validQty) {
+        alert(`物品「${item.name || '未知'}」的數量無效，必須為 1 ~ 10000 的正整數！`);
+        return;
+      }
+    }
     requestAction('確定要儲存修改後的申請單內容嗎？', async () => {
       try {
         const cleanItems = editItems.map(item => ({
-          supplyId: item.supplyId || '',
-          name: item.name || '',
-          quantity: Number(item.quantity) || 1
+          supplyId: String(item.supplyId).trim(),
+          name: String(item.name).trim(),
+          quantity: parsePositiveInt(item.quantity, 10000) as number
         }));
-        await updateDoc(doc(db, 'requests', editingReq.id), { items: cleanItems });
+        await updateDoc(doc(db, 'requests', editingReq.id), {
+          items: cleanItems,
+          updatedAt: serverTimestamp()
+        });
         setEditingReq(null);
         fetchData();
       } catch (e: any) { alert('儲存失敗：' + e.message); }
@@ -192,34 +245,59 @@ export default function RequestPage() {
   };
 
   const handleSubmit = async () => {
+    if (!user) {
+      alert('尚未取得使用者安全憑證，請重新整理頁面或登入！');
+      return;
+    }
     if (!selectedDeptId || !selectedPersonId || selectedItems.length === 0) {
       alert('請填寫申請單位、人員，並至少選擇一項物品！'); return;
+    }
+    if (!isAdmin && boundApplicant && (selectedDeptId !== boundApplicant.departmentId || selectedPersonId !== boundApplicant.applicantId)) {
+      alert('安全限制：申請人員與您目前已綁定的身分不符！');
+      return;
+    }
+    for (const item of selectedItems) {
+      if (!parsePositiveInt(item.quantity, 10000)) {
+        alert(`物品「${item.name}」數量必須為 1 ~ 10000 的正整數！`);
+        return;
+      }
     }
     setIsSubmitting(true);
     try {
       const serial = await getNextSerial('REQ');
       const dept = departments.find(d => d.id === selectedDeptId);
-      const person = personnel.find(p => p.id === selectedPersonId);
+      const person = personnel.find(p => p.id === selectedPersonId && p.departmentId === selectedDeptId);
+      if (!dept || !person) {
+        throw new Error('所選單位或人員資料無效');
+      }
       
       const cleanItems = selectedItems.map(item => ({
         supplyId: item.supplyId,
         name: item.name,
-        quantity: item.quantity || 1
+        quantity: parsePositiveInt(item.quantity, 10000) as number
       }));
 
       const newReqData = {
         id: serial,
         departmentId: selectedDeptId,
-        departmentName: dept?.name || '未知單位',
+        departmentName: dept.name,
         applicantId: selectedPersonId,
-        applicantName: person?.name || '未知人員',
+        applicantName: person.name,
+        ownerUid: user.uid,
         items: cleanItems,
         status: 'pending' as const,
         createdAt: serverTimestamp(),
       };
       
       await setDoc(doc(db, 'requests', serial), newReqData);
-      // alert('申請單已成功送出！✨ 即將為您產生列印檔...'); 
+      if (!isAdmin && !boundApplicant) {
+        bindApplicant({
+          departmentId: dept.id,
+          departmentName: dept.name,
+          applicantId: person.id,
+          applicantName: person.name,
+        });
+      }
       
       const createdReq = { ...newReqData, createdAt: { toDate: () => new Date() } } as unknown as RequestRecord;
       triggerPrintRequest(createdReq);
@@ -231,6 +309,16 @@ export default function RequestPage() {
   };
 
   const handleDeleteRequest = (id: string) => {
+    const target = allRequests.find(r => r.id === id);
+    if (!target) return;
+    if (target.status && target.status !== 'pending') {
+      alert('僅能刪除「未核可」狀態的申請單！');
+      return;
+    }
+    if (!isAdmin && target.ownerUid && target.ownerUid !== user?.uid) {
+      alert('權限不足：您僅能刪除自己建立的申請單！');
+      return;
+    }
     requestAction('確定要刪除這筆申請單嗎？', async () => {
       try { await deleteDoc(doc(db, 'requests', id)); fetchData(); }
       catch (e: any) { alert('刪除失敗'); }
@@ -273,9 +361,10 @@ export default function RequestPage() {
                   {renderIcon(item.supplyId)}
                   <input className="flex-1 p-3 border-2 border-gray-100 bg-gray-50 rounded-xl text-gray-700 font-medium" value={item.name} disabled />
                   <span className="text-gray-500 font-bold">x</span>
-                  <input className="w-24 p-3 border-2 border-sky-100 focus:border-sky-300 focus:ring-2 focus:ring-sky-200 outline-none rounded-xl text-center font-bold text-sky-600" type="number" min="1" value={item.quantity === 0 ? '' : item.quantity} onChange={e => {
+                  <input className="w-24 p-3 border-2 border-sky-100 focus:border-sky-300 focus:ring-2 focus:ring-sky-200 outline-none rounded-xl text-center font-bold text-sky-600" type="number" min="1" max="10000" value={item.quantity === 0 ? '' : item.quantity} onChange={e => {
                     const newItems = [...editItems];
-                    newItems[i].quantity = e.target.value === '' ? 0 : parseInt(e.target.value);
+                    const parsed = parseInt(e.target.value, 10);
+                    newItems[i].quantity = e.target.value === '' ? 0 : (Number.isNaN(parsed) || parsed < 1 ? 1 : Math.min(10000, parsed));
                     setEditItems(newItems);
                   }} />
                   <button onClick={() => setEditItems(editItems.filter((_, idx) => idx !== i))} className="p-3 text-red-400 hover:bg-red-50 rounded-xl"><Trash2 className="w-5 h-5"/></button>
@@ -379,22 +468,53 @@ export default function RequestPage() {
       </header>
 
       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 md:p-8 shadow-sm border-2 border-sky-100 mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">申請單位</label>
-            <select value={selectedDeptId} onChange={e => { setSelectedDeptId(e.target.value); setSelectedPersonId(''); }} className="w-full rounded-2xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300">
+            <select
+              value={selectedDeptId}
+              disabled={!isAdmin && Boolean(boundApplicant)}
+              onChange={e => { setSelectedDeptId(e.target.value); setSelectedPersonId(''); }}
+              className="w-full rounded-2xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 disabled:bg-gray-50 disabled:text-gray-500"
+            >
               <option value="">-- 選擇單位 --</option>
               {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">申請人員</label>
-            <select value={selectedPersonId} onChange={e => setSelectedPersonId(e.target.value)} disabled={!selectedDeptId} className="w-full rounded-2xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 disabled:opacity-50">
+            <select
+              value={selectedPersonId}
+              disabled={!selectedDeptId || (!isAdmin && Boolean(boundApplicant))}
+              onChange={e => {
+                const pid = e.target.value;
+                setSelectedPersonId(pid);
+                if (!isAdmin && pid) {
+                  const dept = departments.find(d => d.id === selectedDeptId);
+                  const person = personnel.find(p => p.id === pid && p.departmentId === selectedDeptId);
+                  if (dept && person) {
+                    bindApplicant({
+                      departmentId: dept.id,
+                      departmentName: dept.name,
+                      applicantId: person.id,
+                      applicantName: person.name,
+                    });
+                  }
+                }
+              }}
+              className="w-full rounded-2xl border-2 border-sky-100 px-4 py-3 focus:outline-none focus:border-sky-300 disabled:opacity-50 disabled:bg-gray-50"
+            >
               <option value="">-- 選擇人員 --</option>
               {filteredPersonnel.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
         </div>
+        {!isAdmin && boundApplicant && (
+          <div className="mb-8 flex items-center gap-2 text-xs text-sky-700 bg-sky-50/80 border border-sky-100 px-4 py-2.5 rounded-xl font-bold">
+            <Lock className="w-4 h-4 text-sky-500 flex-shrink-0" />
+            <span>已鎖定為本人申請身分（僅顯示您本人的申請紀錄，避免他人誤改；如需切換請點擊上方導覽列「解除申請人綁定」）。</span>
+          </div>
+        )}
 
         {selectedPersonId && (
           <div>

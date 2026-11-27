@@ -16,9 +16,11 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { db } from '@/lib/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { useAuth } from '@/components/AuthProvider';
 
 export default function Home() {
+  const { user, loading, isAdmin } = useAuth();
   const [stats, setStats] = useState({
     lowStock: 0,
     pendingReq: 0,
@@ -27,11 +29,16 @@ export default function Home() {
   });
 
   useEffect(() => {
+    if (loading || !user) return;
     const fetchStats = async () => {
       try {
+        const reqQuery = isAdmin
+          ? collection(db, 'requests')
+          : query(collection(db, 'requests'), where('ownerUid', '==', user.uid));
+
         const [supSnap, reqSnap] = await Promise.all([
           getDocs(collection(db, 'supplies')),
-          getDocs(collection(db, 'requests'))
+          getDocs(reqQuery)
         ]);
         
         const supplies = supSnap.docs.map(doc => doc.data());
@@ -48,7 +55,7 @@ export default function Home() {
       }
     };
     fetchStats();
-  }, []);
+  }, [loading, user, isAdmin]);
 
   const features = [
     { href: "/request", title: "用品申請", desc: "選取單位與人員快速申請", icon: ClipboardList, color: "sky" },

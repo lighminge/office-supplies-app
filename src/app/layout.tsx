@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/components/AuthProvider";
 
 export const metadata: Metadata = {
   title: "辦公室小物管理系統",
@@ -13,7 +14,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-TW">
-      <body className={`bg-sky-50/50 text-gray-800 font-handwriting`}>{children}</body>
+      <body className="bg-sky-50/50 text-gray-800 font-handwriting">
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

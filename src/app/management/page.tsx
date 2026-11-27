@@ -4,12 +4,13 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Package, Sparkles, Plus, Edit3, Trash2, Tag, Image as ImageIcon, ShoppingCart, Calendar, CheckSquare, Save } from 'lucide-react';
 import { db, getNextSerial } from '@/lib/firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, runTransaction } from 'firebase/firestore';
 import { OfficeSupply, Category, AppIcon, LUCIDE_ICONS_LIST, LUCIDE_ICONS_MAP, RequestRecord, ProcurementRecord, ProcurementItem } from '@/types';
 import ItemForm from '@/components/ItemForm';
 import ItemCard from '@/components/ItemCard';
 import ConfirmModal from '@/components/ConfirmModal';
-import * as Icons from 'lucide-react';
+import { AdminGuard } from '@/components/AuthProvider';
+import { getSafeLucideIcon, sanitizeText, parsePositiveInt, parsePositiveAmount, isValidDateString } from '@/lib/security';
 
 type TabType = 'supplies' | 'categories' | 'icons' | 'procurement';
 
@@ -89,10 +90,11 @@ export default function ManagementPage() {
   const [catId, setCatId] = useState('');
   const [catName, setCatName] = useState('');
   const handleSaveCategory = async () => {
-    if (!catName) return requestAction('請輸入類別名稱！', () => {}, '確定');
+    const cleanName = sanitizeText(catName, 50);
+    if (!cleanName) return requestAction('請輸入有效的類別名稱（1 ~ 50 字元）！', () => {}, '確定');
     try {
-      if (catId) await updateDoc(doc(db, 'categories', catId), { name: catName, updatedAt: serverTimestamp() });
-      else await addDoc(collection(db, 'categories'), { name: catName, updatedAt: serverTimestamp() });
+      if (catId) await updateDoc(doc(db, 'categories', catId), { name: cleanName, updatedAt: serverTimestamp() });
+      else await addDoc(collection(db, 'categories'), { name: cleanName, updatedAt: serverTimestamp() });
       setCatId(''); setCatName(''); fetchData();
     } catch (e: any) { alert('儲存失敗：' + e.message); }
   };
@@ -106,10 +108,13 @@ export default function ManagementPage() {
   const [iconName, setIconName] = useState(LUCIDE_ICONS_LIST[0]);
   const [iconLabel, setIconLabel] = useState(LUCIDE_ICONS_MAP[LUCIDE_ICONS_LIST[0]]);
   const handleSaveIcon = async () => {
-    if (!iconCategoryId || !iconLabel || !iconName) return requestAction('請選取物品類別、輸入插圖名稱並選擇圖示！', () => {}, '確定');
+    const cleanLabel = sanitizeText(iconLabel, 50);
+    if (!iconCategoryId || !cleanLabel || !iconName || !Object.prototype.hasOwnProperty.call(LUCIDE_ICONS_MAP, iconName)) {
+      return requestAction('請選取物品類別、輸入有效的插圖名稱（1 ~ 50 字元）並選擇合法圖示！', () => {}, '確定');
+    }
     try {
-      if (iconId) await updateDoc(doc(db, 'icons', iconId), { categoryId: iconCategoryId, name: iconName, label: iconLabel, updatedAt: serverTimestamp() });
-      else await addDoc(collection(db, 'icons'), { categoryId: iconCategoryId, name: iconName, label: iconLabel, updatedAt: serverTimestamp() });
+      if (iconId) await updateDoc(doc(db, 'icons', iconId), { categoryId: iconCategoryId, name: iconName, label: cleanLabel, updatedAt: serverTimestamp() });
+      else await addDoc(collection(db, 'icons'), { categoryId: iconCategoryId, name: iconName, label: cleanLabel, updatedAt: serverTimestamp() });
       setIconId(''); setIconCategoryId(''); setIconLabel(LUCIDE_ICONS_MAP[LUCIDE_ICONS_LIST[0]]); setIconName(LUCIDE_ICONS_LIST[0]); fetchData();
     } catch (e: any) { alert('儲存失敗：' + e.message); }
   };
@@ -192,13 +197,13 @@ export default function ManagementPage() {
   }, [activeTab]);
 
   const handleAddProcItem = () => {
-    const qty = Number(procQty) || 0;
-    const price = Number(procPrice) || 0;
+    const qty = parsePositiveInt(procQty, 100000);
+    const price = parsePositiveAmount(procPrice, 10000000);
     if (!procCatId || !procSupplyId) {
       return requestAction('請選取物品類別與名稱！', () => {}, '確定');
     }
-    if (qty <= 0 || price <= 0) {
-      return requestAction('數量與單價必須大於 0 唷！', () => {}, '確定');
+    if (!qty || !price) {
+      return requestAction('數量必須為正整數（1 ~ 100,000）且單價必須大於 0 唷！', () => {}, '確定');
     }
     const supply = supplies.find(s => s.id === procSupplyId);
     if (!supply) return;
@@ -251,20 +256,26 @@ export default function ManagementPage() {
   };
 
   const handleSaveProcurement = async () => {
-    if (!procDate || !procLocation || procItems.length === 0) {
-      return requestAction('請填寫日期、地點並至少加入一項物品！', () => {}, '確定');
+    const cleanLocation = sanitizeText(procLocation, 100);
+    if (!isValidDateString(procDate) || !cleanLocation || procItems.length === 0 || procItems.length > 100) {
+      return requestAction('請填寫有效日期、地點（1~100字元）並加入 1~100 項物品！', () => {}, '確定');
+    }
+    for (const item of procItems) {
+      if (!parsePositiveInt(item.quantity, 100000) || typeof item.unitPrice !== 'number' || item.unitPrice < 0) {
+        return requestAction(`品項「${item.name}」的數量或單價格式不合法！`, () => {}, '確定');
+      }
     }
     const totalAmount = procItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
     requestAction('確定要儲存這筆採購單嗎？', async () => {
       try {
         if (editingHistoryProcId) {
-          await updateDoc(doc(db, 'procurements', editingHistoryProcId), { date: procDate, location: procLocation, items: procItems, totalAmount, updatedAt: serverTimestamp() });
+          await updateDoc(doc(db, 'procurements', editingHistoryProcId), { date: procDate, location: cleanLocation, items: procItems, totalAmount, updatedAt: serverTimestamp() });
         } else {
           const serial = await getNextSerial('PROC');
-          await setDoc(doc(db, 'procurements', serial), { id: serial, date: procDate, location: procLocation, items: procItems, totalAmount, isRestocked: false, createdAt: serverTimestamp() });
+          await setDoc(doc(db, 'procurements', serial), { id: serial, date: procDate, location: cleanLocation, items: procItems, totalAmount, isRestocked: false, createdAt: serverTimestamp() });
           const reqSnap = await getDocs(collection(db, 'requests'));
           const purchasingReqs = reqSnap.docs.filter(doc => doc.data().status === 'purchasing');
-          for (const r of purchasingReqs) await updateDoc(doc(db, 'requests', r.id), { status: 'pending-restock' });
+          for (const r of purchasingReqs) await updateDoc(doc(db, 'requests', r.id), { status: 'pending-restock', updatedAt: serverTimestamp() });
           setPurchasingRequests([]); // 立即清空本地狀態，防止 useEffect 重新填入
         }
         setProcDate(''); setProcLocation(''); setProcItems([]); setProcCatId(''); setProcSupplyId(''); setProcQty(1); setProcPrice(0); setEditingProcSupplyId('');
@@ -274,23 +285,74 @@ export default function ManagementPage() {
     });
   };
 
+  /**
+   * 使用 Firestore Transaction 原子化執行採購單入庫與庫存累加
+   * 確保讀取與更新皆在同一個 Transaction 中完成，避免重複入庫或中途斷線導致庫存不一致
+   */
   const processRestock = async (procList: ProcurementRecord[], date: string) => {
+    if (!isValidDateString(date)) {
+      alert('請選擇有效的入庫日期！');
+      return;
+    }
     try {
-      for (const proc of procList) {
-        if (proc.isRestocked) continue;
-        for (const item of proc.items) {
-          const supplyRef = doc(db, 'supplies', item.supplyId);
-          const supplyDoc = await getDoc(supplyRef);
-          if (supplyDoc.exists()) {
-            const currentQty = supplyDoc.data().quantity || 0;
-            await updateDoc(supplyRef, { quantity: currentQty + item.quantity });
+      const targetIds = procList.filter(p => !p.isRestocked).map(p => p.id);
+      if (targetIds.length === 0) return;
+
+      await runTransaction(db, async (transaction) => {
+        // 1. 讀取所有目標採購單，確認皆為未入庫狀態
+        const procRefs = targetIds.map(id => doc(db, 'procurements', id));
+        const procDocs = await Promise.all(procRefs.map(ref => transaction.get(ref)));
+
+        const addedBySupply: Record<string, number> = {};
+        for (const pDoc of procDocs) {
+          if (!pDoc.exists()) {
+            throw new Error(`找不到採購單 ${pDoc.id}`);
+          }
+          const pData = pDoc.data() as ProcurementRecord;
+          if (pData.isRestocked) {
+            throw new Error(`採購單 ${pDoc.id} 已完成入庫，請勿重複執行！`);
+          }
+          for (const item of pData.items || []) {
+            const validQty = parsePositiveInt(item.quantity, 100000);
+            if (!validQty) {
+              throw new Error(`採購單 ${pDoc.id} 品項「${item.name}」數量異常！`);
+            }
+            addedBySupply[item.supplyId] = (addedBySupply[item.supplyId] || 0) + validQty;
           }
         }
-        await updateDoc(doc(db, 'procurements', proc.id), { isRestocked: true, restockDate: date });
-      }
+
+        // 2. 讀取所有受影響的物品庫存文件
+        const supplyIds = Object.keys(addedBySupply);
+        const supplyRefs = supplyIds.map(sid => doc(db, 'supplies', sid));
+        const supplyDocs = await Promise.all(supplyRefs.map(ref => transaction.get(ref)));
+
+        // 3. 原子化更新庫存與採購單入庫狀態
+        for (let i = 0; i < supplyIds.length; i++) {
+          const sid = supplyIds[i];
+          const sDoc = supplyDocs[i];
+          if (sDoc.exists()) {
+            const currentQty = Number(sDoc.data().quantity) || 0;
+            transaction.update(supplyRefs[i], {
+              quantity: currentQty + addedBySupply[sid],
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+
+        for (const procRef of procRefs) {
+          transaction.update(procRef, {
+            isRestocked: true,
+            restockDate: date,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      });
+
       const reqSnap = await getDocs(collection(db, 'requests'));
       const pendingRestockReqs = reqSnap.docs.filter(doc => doc.data().status === 'pending-restock');
-      for (const r of pendingRestockReqs) await updateDoc(doc(db, 'requests', r.id), { status: 'restocked' });
+      for (const r of pendingRestockReqs) {
+        await updateDoc(doc(db, 'requests', r.id), { status: 'restocked', updatedAt: serverTimestamp() });
+      }
       fetchData();
     } catch (e: any) { alert('入庫失敗：' + e.message); }
   };
@@ -317,10 +379,16 @@ export default function ManagementPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDeleteProcurement = (id: string) => requestAction('確定要刪除這筆採購單嗎？', async () => {
-    try { await deleteDoc(doc(db, 'procurements', id)); fetchData(); }
-    catch (e: any) { alert('刪除失敗：' + e.message); }
-  }, '確定刪除');
+  const handleDeleteProcurement = (id: string) => {
+    const proc = procurements.find(p => p.id === id);
+    if (proc?.isRestocked) {
+      return requestAction('已入庫的採購單無法刪除！', () => {}, '確定');
+    }
+    requestAction('確定要刪除這筆採購單嗎？', async () => {
+      try { await deleteDoc(doc(db, 'procurements', id)); fetchData(); }
+      catch (e: any) { alert('刪除失敗：' + e.message); }
+    }, '確定刪除');
+  };
 
   const procFilteredSupplies = supplies.filter(s => procCatId ? s.categoryId === procCatId : true);
   const filteredProcurements = procurements.filter(p => {
@@ -334,6 +402,7 @@ export default function ManagementPage() {
   const totalProcPages = Math.ceil(filteredProcurements.length / procPerPage) || 1;
 
   return (
+    <AdminGuard>
     <main className="min-h-screen p-6 md:p-12 max-w-7xl mx-auto">
       <ConfirmModal isOpen={confirmOpen} title="確認執行" message={confirmMessage} onConfirm={confirmAction} onCancel={() => setConfirmOpen(false)} confirmText={confirmBtnText} confirmColor={confirmBtnColor} />
       
@@ -375,7 +444,7 @@ export default function ManagementPage() {
         )}
 
         {activeTab === 'icons' && (
-          <div><h2 className="text-xl font-bold text-gray-800 mb-4">{iconId ? '編輯插圖' : '新增插圖'}</h2><div className="flex flex-col md:flex-row gap-4 mb-8"><select value={iconCategoryId} onChange={e => setIconCategoryId(e.target.value)} className="flex-1 rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300"><option value="">-- 先選取物品類別 --</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><div className="flex items-center gap-2 flex-[1.5]"><div className="p-2 bg-sky-50 rounded-xl">{React.createElement((Icons as any)[iconName] || Icons.HelpCircle, { className: 'w-6 h-6 text-sky-500' })}</div><select value={iconName} onChange={e => { setIconName(e.target.value); if(!iconId) setIconLabel(LUCIDE_ICONS_MAP[e.target.value] || ''); }} disabled={!iconCategoryId} className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300 disabled:opacity-50">{LUCIDE_ICONS_LIST.map(name => <option key={name} value={name}>{LUCIDE_ICONS_MAP[name]}</option>)}</select></div><input type="text" value={iconLabel} onChange={e => setIconLabel(e.target.value)} placeholder="自訂中文名稱" className="flex-1 rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" /><div className="flex gap-2"><button onClick={handleSaveIcon} className="bg-sky-400 hover:bg-sky-500 text-white px-6 py-2 rounded-xl font-bold whitespace-nowrap"><Plus className="w-5 h-5" /> {iconId ? '儲存' : '新增'}</button>{iconId && <button onClick={() => { setIconId(''); setIconCategoryId(''); setIconLabel(LUCIDE_ICONS_MAP[LUCIDE_ICONS_LIST[0]]); setIconName(LUCIDE_ICONS_LIST[0]); }} className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-xl font-bold">取消</button>}</div></div><div className="mb-6 flex items-center gap-2 border-t-2 border-b-2 border-dashed border-sky-100 py-6"><span className="font-bold text-gray-600">依類別篩選：</span><select value={iconCategoryFilter} onChange={e => setIconCategoryFilter(e.target.value)} className="rounded-xl border-2 border-sky-100 px-4 py-1 focus:outline-none focus:border-sky-300"><option value="">全部類別</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">{filteredIcons.map(icon => { const IconComp = (Icons as any)[icon.name] || Icons.HelpCircle; const cName = categories.find(c => c.id === icon.categoryId)?.name || '未知'; return (<div key={icon.id} className="bg-white border-2 border-sky-100 rounded-2xl p-4 flex flex-col items-center group shadow-sm"><IconComp className="w-10 h-10 text-sky-500 mb-2" /><span className="font-bold text-gray-700 text-center">{icon.label}</span><span className="text-xs text-sky-500 font-medium bg-sky-50 px-2 py-1 rounded-lg mt-2">{cName}</span><div className="flex gap-2 mt-3 opacity-0 group-hover:opacity-100"><button onClick={() => {setIconId(icon.id); setIconCategoryId(icon.categoryId); setIconLabel(icon.label); setIconName(icon.name);}} className="text-sky-500 hover:text-sky-600"><Edit3 className="w-4 h-4" /></button><button onClick={() => handleDeleteIcon(icon.id)} className="text-gray-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button></div></div>)})}</div></div>
+          <div><h2 className="text-xl font-bold text-gray-800 mb-4">{iconId ? '編輯插圖' : '新增插圖'}</h2><div className="flex flex-col md:flex-row gap-4 mb-8"><select value={iconCategoryId} onChange={e => setIconCategoryId(e.target.value)} className="flex-1 rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300"><option value="">-- 先選取物品類別 --</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><div className="flex items-center gap-2 flex-[1.5]"><div className="p-2 bg-sky-50 rounded-xl">{React.createElement(getSafeLucideIcon(iconName), { className: 'w-6 h-6 text-sky-500' })}</div><select value={iconName} onChange={e => { setIconName(e.target.value); if(!iconId) setIconLabel(LUCIDE_ICONS_MAP[e.target.value] || ''); }} disabled={!iconCategoryId} className="w-full rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300 disabled:opacity-50">{LUCIDE_ICONS_LIST.map(name => <option key={name} value={name}>{LUCIDE_ICONS_MAP[name]}</option>)}</select></div><input type="text" value={iconLabel} onChange={e => setIconLabel(e.target.value)} placeholder="自訂中文名稱" className="flex-1 rounded-xl border-2 border-sky-100 px-4 py-2 focus:outline-none focus:border-sky-300" /><div className="flex gap-2"><button onClick={handleSaveIcon} className="bg-sky-400 hover:bg-sky-500 text-white px-6 py-2 rounded-xl font-bold whitespace-nowrap"><Plus className="w-5 h-5" /> {iconId ? '儲存' : '新增'}</button>{iconId && <button onClick={() => { setIconId(''); setIconCategoryId(''); setIconLabel(LUCIDE_ICONS_MAP[LUCIDE_ICONS_LIST[0]]); setIconName(LUCIDE_ICONS_LIST[0]); }} className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-xl font-bold">取消</button>}</div></div><div className="mb-6 flex items-center gap-2 border-t-2 border-b-2 border-dashed border-sky-100 py-6"><span className="font-bold text-gray-600">依類別篩選：</span><select value={iconCategoryFilter} onChange={e => setIconCategoryFilter(e.target.value)} className="rounded-xl border-2 border-sky-100 px-4 py-1 focus:outline-none focus:border-sky-300"><option value="">全部類別</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">{filteredIcons.map(icon => { const IconComp = getSafeLucideIcon(icon.name); const cName = categories.find(c => c.id === icon.categoryId)?.name || '未知'; return (<div key={icon.id} className="bg-white border-2 border-sky-100 rounded-2xl p-4 flex flex-col items-center group shadow-sm"><IconComp className="w-10 h-10 text-sky-500 mb-2" /><span className="font-bold text-gray-700 text-center">{icon.label}</span><span className="text-xs text-sky-500 font-medium bg-sky-50 px-2 py-1 rounded-lg mt-2">{cName}</span><div className="flex gap-2 mt-3 opacity-0 group-hover:opacity-100"><button onClick={() => {setIconId(icon.id); setIconCategoryId(icon.categoryId); setIconLabel(icon.label); setIconName(icon.name);}} className="text-sky-500 hover:text-sky-600"><Edit3 className="w-4 h-4" /></button><button onClick={() => handleDeleteIcon(icon.id)} className="text-gray-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button></div></div>)})}</div></div>
         )}
 
         {activeTab === 'supplies' && (
@@ -437,5 +506,6 @@ export default function ManagementPage() {
 
       {isSupplyFormOpen && (<div className="fixed inset-0 bg-sky-100/60 z-50 flex items-center justify-center p-4"><div className="w-full max-w-md animate-in zoom-in-95 duration-200"><ItemForm initialData={editingSupply} categories={categories} icons={icons} onSubmit={handleSaveSupply} onCancel={() => { setIsSupplyFormOpen(false); setEditingSupply(null); }} /></div></div>)}
     </main>
+    </AdminGuard>
   );
 }

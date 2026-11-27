@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ClipboardList, CheckCircle, Clock, Trash2, ShoppingCart, RotateCcw, Package, CheckSquare, Edit3, Save } from 'lucide-react';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, deleteDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { RequestRecord, Department, Personnel, RequestItem, OfficeSupply, Category, AppIcon } from '@/types';
 import ConfirmModal from '@/components/ConfirmModal';
-import * as Icons from 'lucide-react';
+import { AdminGuard } from '@/components/AuthProvider';
+import { getSafeLucideIcon, parsePositiveInt } from '@/lib/security';
 
 export default function WorkflowPage() {
   const [activeTab, setActiveTab] = useState<'pending' | 'approved'>('pending');
@@ -64,7 +65,7 @@ export default function WorkflowPage() {
   const renderIcon = (supplyId: string) => {
     const supply = supplies.find(s => s.id === supplyId);
     const iconData = icons.find(i => i.id === supply?.iconId);
-    const IconComp = iconData ? (Icons as any)[iconData.name] : Icons.HelpCircle;
+    const IconComp = getSafeLucideIcon(iconData?.name);
     return <IconComp className="w-5 h-5 text-sky-500 flex-shrink-0" />;
   };
 
@@ -95,14 +96,27 @@ export default function WorkflowPage() {
 
   const handleUpdateReq = async () => {
     if (!editingReq) return;
+    if (editItems.length === 0 || editItems.length > 100) {
+      alert('申請品項數量須介於 1 ~ 100 項之間！');
+      return;
+    }
+    for (const item of editItems) {
+      if (!item.supplyId || !item.name || !parsePositiveInt(item.quantity, 10000)) {
+        alert(`物品「${item.name || '未知'}」的數量無效，必須為 1 ~ 10000 的正整數！`);
+        return;
+      }
+    }
     requestAction('確定要儲存修改後的申請單內容嗎？', async () => {
       try {
         const cleanItems = editItems.map(item => ({
-          supplyId: item.supplyId || '',
-          name: item.name || '',
-          quantity: Number(item.quantity) || 1
+          supplyId: String(item.supplyId).trim(),
+          name: String(item.name).trim(),
+          quantity: parsePositiveInt(item.quantity, 10000) as number
         }));
-        await updateDoc(doc(db, 'requests', editingReq.id), { items: cleanItems });
+        await updateDoc(doc(db, 'requests', editingReq.id), {
+          items: cleanItems,
+          updatedAt: serverTimestamp()
+        });
         setEditingReq(null);
         fetchData();
       } catch (e: any) { alert('儲存失敗：' + e.message); }
@@ -110,15 +124,23 @@ export default function WorkflowPage() {
   };
 
   const handleAddNewItemToReq = () => {
-    const qty = Number(newItemQty) || 0;
-    if (!newItemSupId || qty <= 0) return;
+    const qty = parsePositiveInt(newItemQty, 10000);
+    if (!newItemSupId || !qty) {
+      alert('請選擇物品並輸入有效的正整數數量（1 ~ 10000）！');
+      return;
+    }
     const supply = supplies.find(s => s.id === newItemSupId);
     if (!supply) return;
     
     const existing = editItems.find(item => item.supplyId === newItemSupId);
     if (existing) {
+      const nextQty = parsePositiveInt(existing.quantity + qty, 10000);
+      if (!nextQty) {
+        alert('單一品項累計申請數量不可超過 10000！');
+        return;
+      }
       setEditItems(editItems.map(item => 
-        item.supplyId === newItemSupId ? { ...item, quantity: item.quantity + qty } : item
+        item.supplyId === newItemSupId ? { ...item, quantity: nextQty } : item
       ));
     } else {
       setEditItems([...editItems, { supplyId: supply.id, name: supply.name, quantity: qty }]);
@@ -171,19 +193,76 @@ export default function WorkflowPage() {
     } catch (e: any) { alert('刪除失敗：' + e.message); }
   }, '確認刪除', 'bg-red-400 hover:bg-red-500 shadow-red-200');
 
-  const confirmReceiveLogic = async (id: string) => {
-    const req = requests.find(r => r.id === id);
-    if (!req) return;
-    for (const item of req.items) {
-      const supplyRef = doc(db, 'supplies', item.supplyId);
-      const supplyDoc = await getDoc(supplyRef);
-      if (supplyDoc.exists()) {
-        const currentQty = supplyDoc.data().quantity || 0;
-        const newQty = Math.max(0, currentQty - item.quantity); // 避免負數
-        await updateDoc(supplyRef, { quantity: newQty });
+  /**
+   * 使用 Firestore Transaction 原子化執行單筆或多筆申請單的領用與庫存扣減
+   * 防止並行領用時的競態條件（Race Condition / Lost Update）與超領負數庫存
+   */
+  const confirmReceiveBatchTransaction = async (requestIds: string[]) => {
+    await runTransaction(db, async (transaction) => {
+      // 1. 讀取所有目標申請單並驗證狀態
+      const reqRefs = requestIds.map(id => doc(db, 'requests', id));
+      const reqDocs = await Promise.all(reqRefs.map(ref => transaction.get(ref)));
+
+      const requiredBySupply: Record<string, { name: string; totalQty: number }> = {};
+
+      for (const reqDoc of reqDocs) {
+        if (!reqDoc.exists()) {
+          throw new Error(`找不到申請單 ${reqDoc.id}`);
+        }
+        const data = reqDoc.data() as RequestRecord;
+        if (data.status === 'completed') {
+          throw new Error(`申請單 ${reqDoc.id} 已經完成領用，請勿重複執行！`);
+        }
+        if (data.status === 'purchasing' || data.status === 'pending-restock') {
+          throw new Error(`申請單 ${reqDoc.id} 尚未完成採購入庫，無法領用！`);
+        }
+        for (const item of data.items || []) {
+          const validQty = parsePositiveInt(item.quantity, 100000);
+          if (!validQty) {
+            throw new Error(`申請單 ${reqDoc.id} 內的品項「${item.name}」數量異常！`);
+          }
+          if (!requiredBySupply[item.supplyId]) {
+            requiredBySupply[item.supplyId] = { name: item.name, totalQty: 0 };
+          }
+          requiredBySupply[item.supplyId].totalQty += validQty;
+        }
       }
-    }
-    await updateDoc(doc(db, 'requests', id), { status: 'completed' });
+
+      // 2. 讀取所有涉及的物品庫存並檢查總需求量是否充足
+      const supplyIds = Object.keys(requiredBySupply);
+      const supplyRefs = supplyIds.map(sid => doc(db, 'supplies', sid));
+      const supplyDocs = await Promise.all(supplyRefs.map(ref => transaction.get(ref)));
+
+      const nextQuantities: Record<string, number> = {};
+      for (let i = 0; i < supplyIds.length; i++) {
+        const sid = supplyIds[i];
+        const sDoc = supplyDocs[i];
+        const reqInfo = requiredBySupply[sid];
+        if (!sDoc.exists()) {
+          throw new Error(`物品「${reqInfo.name}」已不存在於庫存系統中！`);
+        }
+        const currentQty = Number(sDoc.data().quantity) || 0;
+        if (currentQty < reqInfo.totalQty) {
+          throw new Error(`物品「${reqInfo.name}」庫存不足（目前庫存: ${currentQty}，本次總領用需求: ${reqInfo.totalQty}）！`);
+        }
+        nextQuantities[sid] = currentQty - reqInfo.totalQty;
+      }
+
+      // 3. 原子化寫入新庫存與申請單完成狀態
+      for (let i = 0; i < supplyIds.length; i++) {
+        const sid = supplyIds[i];
+        transaction.update(supplyRefs[i], {
+          quantity: nextQuantities[sid],
+          updatedAt: serverTimestamp(),
+        });
+      }
+      for (const reqRef of reqRefs) {
+        transaction.update(reqRef, {
+          status: 'completed',
+          updatedAt: serverTimestamp(),
+        });
+      }
+    });
   };
 
   const handleConfirmReceive = (req: RequestRecord) => {
@@ -193,15 +272,19 @@ export default function WorkflowPage() {
     
     // Check if any item has insufficient stock
     for (const item of req.items) {
+      const validQty = parsePositiveInt(item.quantity, 100000);
+      if (!validQty) {
+        return alert(`領用失敗！物品「${item.name}」申請數量無效。`);
+      }
       const supply = supplies.find(s => s.id === item.supplyId);
-      if (!supply || supply.quantity < item.quantity) {
+      if (!supply || supply.quantity < validQty) {
         return alert(`領用失敗！物品「${item.name}」目前庫存不足。`);
       }
     }
 
-    requestAction('確認領用後，將自動扣除對應物品的庫存數量，並將狀態標為「已完成」，確定執行嗎？', async () => {
+    requestAction('確認領用後，將以安全交易（Transaction）扣除對應物品的庫存數量，並將狀態標為「已完成」，確定執行嗎？', async () => {
       try {
-        await confirmReceiveLogic(req.id);
+        await confirmReceiveBatchTransaction([req.id]);
         fetchData();
       } catch (e: any) { alert('處理失敗：' + e.message); }
     });
@@ -215,16 +298,28 @@ export default function WorkflowPage() {
     
     if (validSelections.length === 0) return alert('請先勾選可領用的申請單！(採購中或待入庫的單據無法領用)');
     
-    // Check stock for all selected
+    // 加總所有勾選單據對同一物品的總需求量，防止多單拆分繞過庫存檢查
+    const aggregatedRequired: Record<string, { name: string; totalQty: number }> = {};
     for (const id of validSelections) {
       const req = requests.find(r => r.id === id);
       if (req) {
         for (const item of req.items) {
-          const supply = supplies.find(s => s.id === item.supplyId);
-          if (!supply || supply.quantity < item.quantity) {
-             return alert(`領用失敗！申請單 ${req.id} 內的物品「${item.name}」目前庫存不足，請先取消勾選該單據。`);
+          const validQty = parsePositiveInt(item.quantity, 100000);
+          if (!validQty) {
+            return alert(`領用失敗！申請單 ${req.id} 內的物品「${item.name}」數量無效。`);
           }
+          if (!aggregatedRequired[item.supplyId]) {
+            aggregatedRequired[item.supplyId] = { name: item.name, totalQty: 0 };
+          }
+          aggregatedRequired[item.supplyId].totalQty += validQty;
         }
+      }
+    }
+
+    for (const [supplyId, info] of Object.entries(aggregatedRequired)) {
+      const supply = supplies.find(s => s.id === supplyId);
+      if (!supply || supply.quantity < info.totalQty) {
+        return alert(`領用失敗！物品「${info.name}」累計領用需求為 ${info.totalQty}，但目前庫存僅有 ${supply ? supply.quantity : 0}。`);
       }
     }
 
@@ -232,9 +327,9 @@ export default function WorkflowPage() {
       alert(`已幫您自動略過 ${selectedApproved.length - validSelections.length} 筆尚未入庫的單據。`);
     }
 
-    requestAction(`確認領用後，將自動扣除這 ${validSelections.length} 筆申請單對應物品的庫存數量，確定執行嗎？`, async () => {
+    requestAction(`確認領用後，將以安全交易（Transaction）一次扣除這 ${validSelections.length} 筆申請單對應物品的庫存數量，確定執行嗎？`, async () => {
       try {
-        await Promise.all(validSelections.map(id => confirmReceiveLogic(id)));
+        await confirmReceiveBatchTransaction(validSelections);
         setSelectedApproved([]);
         fetchData();
       } catch (e: any) { alert('批次處理失敗：' + e.message); }
@@ -253,6 +348,7 @@ export default function WorkflowPage() {
   const editFilteredSupplies = supplies.filter(s => newItemCatId ? s.categoryId === newItemCatId : true);
 
   return (
+    <AdminGuard>
     <main className="min-h-screen p-6 md:p-12 max-w-7xl mx-auto">
       <ConfirmModal 
         isOpen={confirmOpen} 
@@ -277,9 +373,10 @@ export default function WorkflowPage() {
                   {renderIcon(item.supplyId)}
                   <input className="flex-1 p-3 border-2 border-gray-100 bg-gray-50 rounded-xl text-gray-700 font-medium" value={item.name} disabled />
                   <span className="text-gray-500 font-bold">x</span>
-                  <input className="w-24 p-3 border-2 border-sky-100 focus:border-sky-300 focus:ring-2 focus:ring-sky-200 outline-none rounded-xl text-center font-bold text-sky-600" type="number" min="1" value={item.quantity === 0 ? '' : item.quantity} onChange={e => {
+                  <input className="w-24 p-3 border-2 border-sky-100 focus:border-sky-300 focus:ring-2 focus:ring-sky-200 outline-none rounded-xl text-center font-bold text-sky-600" type="number" min="1" max="10000" value={item.quantity === 0 ? '' : item.quantity} onChange={e => {
                     const newItems = [...editItems];
-                    newItems[i].quantity = e.target.value === '' ? 0 : parseInt(e.target.value);
+                    const parsed = parseInt(e.target.value, 10);
+                    newItems[i].quantity = e.target.value === '' ? 0 : (Number.isNaN(parsed) || parsed < 1 ? 1 : Math.min(10000, parsed));
                     setEditItems(newItems);
                   }} />
                   <button onClick={() => setEditItems(editItems.filter((_, idx) => idx !== i))} className="p-3 text-red-400 hover:bg-red-50 rounded-xl"><Trash2 className="w-5 h-5"/></button>
@@ -581,5 +678,6 @@ export default function WorkflowPage() {
 
       </div>
     </main>
+    </AdminGuard>
   );
 }

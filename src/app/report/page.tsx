@@ -10,6 +10,8 @@ import { useReactToPrint } from 'react-to-print';
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { AdminGuard } from '@/components/AuthProvider';
+import { isValidDateString } from '@/lib/security';
 
 type TabType = 'list' | 'chart';
 type ChartType = 'table' | 'pie' | 'bar' | 'line';
@@ -86,7 +88,8 @@ export default function ReportPage() {
   };
 
   const generateReport = async () => {
-    if (!startDate || !endDate) return alert("請選擇開始與結束日期！");
+    if (!isValidDateString(startDate) || !isValidDateString(endDate)) return alert("請選擇有效的開始與結束日期！");
+    if (startDate > endDate) return alert("開始日期不可晚於結束日期！");
     setLoading(true); setPage(1);
     try {
       const [reqSnap, procSnap] = await Promise.all([
@@ -190,6 +193,7 @@ export default function ReportPage() {
   };
 
   return (
+    <AdminGuard>
     <main className="min-h-screen p-6 md:p-12 max-w-6xl mx-auto">
       <Link href="/" className="inline-flex items-center gap-2 text-sky-500 hover:text-sky-600 mb-6 font-medium bg-white px-4 py-2 rounded-full shadow-sm border border-sky-100 transition-transform hover:-translate-x-1">
         <ArrowLeft className="w-4 h-4" /> 回首頁
@@ -510,5 +514,6 @@ export default function ReportPage() {
         </div>
       </div>
     </main>
+    </AdminGuard>
   );
 }

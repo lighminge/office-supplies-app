@@ -2,6 +2,7 @@ import React from 'react';
 import { OfficeSupply, Category, AppIcon } from '@/types';
 import * as Icons from 'lucide-react';
 import { motion } from 'framer-motion';
+import { getSafeLucideIcon } from '@/lib/security';
 
 interface ItemCardProps {
   item: OfficeSupply;
@@ -14,7 +15,7 @@ interface ItemCardProps {
 export default function ItemCard({ item, categories, icons, onEdit, onDelete }: ItemCardProps) {
   const category = categories.find(c => c.id === item.categoryId);
   const iconData = icons.find(i => i.id === item.iconId);
-  const IconComponent = iconData ? (Icons as any)[iconData.name] || Icons.HelpCircle : Icons.HelpCircle;
+  const IconComponent = getSafeLucideIcon(iconData?.name);
   
   const isLowStock = item.quantity <= item.minQuantity;
 
