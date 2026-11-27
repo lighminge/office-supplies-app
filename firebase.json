@@ -5,7 +5,11 @@
   "auth": {
     "providers": {
       "anonymous": true,
-      "emailPassword": true
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "辦公室小物管理系統",
+        "supportEmail": "lighminge@gmail.com"
+      }
     }
   }
 }

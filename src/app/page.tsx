@@ -192,15 +192,6 @@ export default function Home() {
               快速系統檢查 🔍
             </button>
           </div>
-
-          <div className="glass-panel p-8 bg-sky-600 text-white relative overflow-hidden group">
-             <div className="relative z-10">
-               <h3 className="text-xl font-bold mb-2">需要幫忙嗎？</h3>
-               <p className="text-sky-100 text-sm mb-4">如果您在使用上有任何問題，可以聯繫系統管理員。</p>
-               <button className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-xs font-bold transition-colors">查看幫助手冊</button>
-             </div>
-             <Sparkles className="absolute right-[-10px] top-[-10px] w-32 h-32 opacity-10 rotate-12 group-hover:scale-110 transition-transform" />
-          </div>
         </motion.div>
       </div>
 

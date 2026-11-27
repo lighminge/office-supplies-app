@@ -437,7 +437,17 @@ service cloud.firestore {
           !isBootstrapped() &&
           request.auth.uid == uid &&
           request.resource.data.role == 'admin' &&
-          request.resource.data.isActive == true));
+          request.resource.data.isActive == true) ||
+         (isNonAnonymous() &&
+          request.auth.uid == uid &&
+          request.resource.data.role == 'staff' &&
+          request.resource.data.isActive == true &&
+          request.resource.data.permissions.canRequest == true &&
+          request.resource.data.permissions.canWorkflow == false &&
+          request.resource.data.permissions.canManageSupplies == false &&
+          request.resource.data.permissions.canViewReports == false &&
+          request.resource.data.permissions.canManageOrg == false &&
+          request.resource.data.permissions.canManageSystem == false));
       allow update: if hasPermission('canManageSystem') &&
         isValidSystemUser(request.resource.data, uid) &&
         areImmutableFieldsUnchanged(['uid']);
